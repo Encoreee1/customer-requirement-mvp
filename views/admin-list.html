@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>需求后台</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script defer src="/js/main.js"></script>
+  </head>
+  <body data-page="admin-list">
+    <header class="admin-topbar">
+      <div>
+        <p class="eyebrow">后台管理</p>
+        <h1>客户需求列表</h1>
+      </div>
+      <a class="secondary-button" href="/admin/logout">退出登录</a>
+    </header>
+
+    <main class="admin-shell">
+      <section class="panel table-panel">
+        <div class="table-toolbar">
+          <h2>提交记录</h2>
+          <button id="refreshOrders" class="secondary-button" type="button">
+            刷新
+          </button>
+        </div>
+
+        <form id="orderFilters" class="filter-form" method="get" action="/admin">
+          <input type="hidden" name="page" value="1" />
+          <input id="sortByInput" type="hidden" name="sortBy" value="created_at" />
+          <input id="sortOrderInput" type="hidden" name="sortOrder" value="desc" />
+
+          <label>
+            <span>搜索</span>
+            <input
+              type="search"
+              name="keyword"
+              placeholder="订单编号 / 姓名 / 联系方式 / 需求"
+            />
+          </label>
+
+          <label>
+            <span>状态</span>
+            <select name="status">
+              <option value="">全部状态</option>
+              <option value="未处理">未处理</option>
+              <option value="处理中">处理中</option>
+              <option value="已完成">已完成</option>
+              <option value="已取消">已取消</option>
+            </select>
+          </label>
+
+          <label>
+            <span>任务类型</span>
+            <select name="taskType">
+              <option value="">全部任务类型</option>
+              <option value="课设报告">课设报告</option>
+              <option value="实验报告">实验报告</option>
+              <option value="PPT制作">PPT制作</option>
+              <option value="代码作业">代码作业</option>
+              <option value="论文/文档">论文/文档</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
+
+          <label>
+            <span>排序</span>
+            <select id="sortSelect">
+              <option value="created_at:desc">最新提交优先</option>
+              <option value="created_at:asc">最早提交优先</option>
+              <option value="deadline:asc">截止时间最近优先</option>
+              <option value="deadline:desc">截止时间最晚优先</option>
+            </select>
+          </label>
+
+          <label>
+            <span>每页</span>
+            <select name="pageSize">
+              <option value="10">10 条</option>
+              <option value="20">20 条</option>
+              <option value="50">50 条</option>
+            </select>
+          </label>
+
+          <div class="filter-actions">
+            <button class="primary-button" type="submit">搜索/筛选</button>
+            <a class="secondary-button" href="/admin">重置</a>
+          </div>
+        </form>
+
+        <div id="ordersSummary" class="list-summary">共 0 条订单</div>
+
+        <div id="listMessage" class="message" role="status"></div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>订单编号</th>
+                <th>客户姓名</th>
+                <th>联系方式</th>
+                <th>任务类型</th>
+                <th>截止时间</th>
+                <th>截止提醒</th>
+                <th>状态</th>
+                <th>提交时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="ordersBody"></tbody>
+          </table>
+        </div>
+
+        <div id="emptyOrders" class="empty-state is-hidden">暂无提交记录</div>
+
+        <div id="paginationBar" class="pagination-bar is-hidden"></div>
+      </section>
+    </main>
+  </body>
+</html>

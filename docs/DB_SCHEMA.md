@@ -1,0 +1,181 @@
+# 数据库结构说明
+
+## 1. 文档目的
+
+本文档记录当前 SQLite 数据库结构、字段含义、枚举值和数据库变更规范。当前结构以 `database.js` 中的初始化代码为准。
+
+## 2. 数据库文件位置
+
+当前实现：
+
+- 默认数据库文件：`data/database.sqlite`
+- 默认数据目录：`data/`
+- 默认上传目录：`uploads/`
+
+`config.js` 支持通过环境变量覆盖：
+
+| 环境变量 | 说明 |
+| --- | --- |
+| `DB_PATH` | 覆盖 SQLite 数据库文件路径 |
+| `UPLOADS_DIR` | 覆盖上传文件保存目录 |
+
+当前 `.env.example` 中未列出 `DB_PATH` 和 `UPLOADS_DIR`，但代码已经支持。是否需要补充到示例文件，待确认。
+
+## 3. 初始化行为
+
+当前 `database.js` 初始化时会执行：
+
+1. 创建 `data/` 目录。
+2. 创建 `uploads/` 目录。
+3. 打开 SQLite 数据库。
+4. 设置 `journal_mode = WAL`。
+5. 设置 `foreign_keys = ON`。
+6. 如果不存在则创建 `orders` 表。
+7. 如果不存在则创建 `files` 表。
+8. 如果不存在则创建索引。
+
+当前没有独立迁移脚本。
+
+## 4. orders 表结构
+
+`orders` 表用于保存客户提交的需求订单。
+
+| 字段名 | 类型 | 是否必填 | 默认值 | 含义 |
+| --- | --- | --- | --- | --- |
+| `id` | INTEGER | 自动生成 | 自增 | 订单主键 |
+| `order_no` | TEXT | 是 | 无 | 对外展示的订单编号，唯一 |
+| `customer_name` | TEXT | 是 | 无 | 客户姓名或昵称 |
+| `contact` | TEXT | 是 | 无 | 客户联系方式 |
+| `task_type` | TEXT | 是 | 无 | 任务类型 |
+| `deadline` | TEXT | 是 | 无 | 截止时间，当前保存前端 `datetime-local` 字符串 |
+| `requirement` | TEXT | 是 | 无 | 具体需求 |
+| `extra_note` | TEXT | 否 | 数据库无默认值，当前创建订单时写入空字符串 | 附加备注 |
+| `status` | TEXT | 是 | `未处理` | 订单状态 |
+| `internal_note` | TEXT | 否 | 数据库无默认值，当前创建订单时写入空字符串 | 后台内部备注 |
+| `created_at` | TEXT | 是 | 无 | 创建时间，当前为 JavaScript ISO 字符串 |
+| `updated_at` | TEXT | 是 | 无 | 更新时间，当前为 JavaScript ISO 字符串 |
+
+建表语句中的关键约束：
+
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+order_no TEXT NOT NULL UNIQUE,
+status TEXT NOT NULL DEFAULT '未处理'
+```
+
+当前索引：
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+```
+
+## 5. files 表结构
+
+`files` 表用于保存订单关联的上传文件信息。
+
+| 字段名 | 类型 | 是否必填 | 默认值 | 含义 |
+| --- | --- | --- | --- | --- |
+| `id` | INTEGER | 自动生成 | 自增 | 文件主键 |
+| `order_id` | INTEGER | 是 | 无 | 所属订单 id |
+| `original_name` | TEXT | 是 | 无 | 客户上传时的原始文件名 |
+| `stored_name` | TEXT | 是 | 无 | 服务端保存到 uploads 目录的文件名 |
+| `file_path` | TEXT | 是 | 无 | 相对文件路径，当前格式为 `uploads/<stored_name>` |
+| `mime_type` | TEXT | 否 | 数据库无默认值，当前创建文件记录时可能写入空字符串 | 上传文件 MIME 类型 |
+| `size` | INTEGER | 是 | 无 | 文件大小，单位为字节 |
+| `created_at` | TEXT | 是 | 无 | 文件记录创建时间，当前为 JavaScript ISO 字符串 |
+
+建表语句中的关键约束：
+
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+order_id INTEGER NOT NULL,
+FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+```
+
+当前索引：
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
+```
+
+## 6. 订单状态枚举值
+
+当前订单状态枚举来自 `config.js`：
+
+1. `未处理`
+2. `处理中`
+3. `已完成`
+4. `已取消`
+
+创建订单时，当前默认状态为：
+
+- `未处理`
+
+后台修改状态时，后端会校验状态必须属于上述枚举。
+
+## 7. 任务类型枚举值
+
+当前任务类型枚举来自 `config.js`：
+
+1. `课设报告`
+2. `实验报告`
+3. `PPT制作`
+4. `代码作业`
+5. `论文/文档`
+6. `其他`
+
+客户提交订单时，后端会校验 `task_type` 必须属于上述枚举。
+
+## 8. orders 和 files 的关系
+
+当前关系为：
+
+1. 一个订单可以关联 0 个、1 个或多个上传文件。
+2. 每个文件必须关联一个订单。
+3. `files.order_id` 外键引用 `orders.id`。
+4. 外键设置为 `ON DELETE CASCADE`。
+
+当前系统没有实现订单删除功能，因此级联删除规则暂未在业务界面中触发。
+
+## 9. 订单编号生成规则
+
+当前订单编号由 `database.js` 中的 `nextOrderNo()` 生成：
+
+1. 前缀为 `DD`。
+2. 中间为当前本地日期，格式 `YYYYMMDD`。
+3. 后缀为当天递增序号，至少 3 位，不足补 0。
+
+示例：
+
+- `DD20260707001`
+- `DD20260707002`
+
+当前实现通过查询当天最大 `order_no` 来生成下一编号。
+
+## 10. 文件存储字段说明
+
+上传文件在磁盘上不会使用原始文件名保存，而是使用：
+
+```text
+<时间戳>-<随机16位hex><原扩展名>
+```
+
+数据库字段含义：
+
+1. `original_name` 用于展示和下载时的建议文件名。
+2. `stored_name` 用于定位 uploads 目录中的真实文件。
+3. `file_path` 当前保存相对路径，但下载接口实际使用 `config.uploadsDir + stored_name` 定位文件。
+
+## 11. 数据库变更规范
+
+后续数据库变更必须遵守：
+
+1. 后续如果要新增字段，必须先在 `DB_SCHEMA.md` 中说明原因、字段名、类型、默认值和兼容策略。
+2. 不允许随意删除旧字段。
+3. 修改字段名时必须考虑历史数据兼容。
+4. 修改枚举值时必须同步检查前端选项、后端校验、数据库历史值和测试清单。
+5. 测试会话需要检查数据库初始化是否正常。
+6. 如果后续需要迁移脚本，应单独记录迁移文件、执行方式、回滚方式和测试方法。
+7. 不要直接手动改动生产或重要测试数据库文件；需要先备份。
+8. 新增表或字段后，必须同步更新 `API_CONTRACT.md` 中相关接口返回结构。
+

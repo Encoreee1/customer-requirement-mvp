@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>需求详情</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script defer src="/js/main.js"></script>
+  </head>
+  <body data-page="admin-detail">
+    <header class="admin-topbar">
+      <div>
+        <p class="eyebrow">需求详情</p>
+        <h1 id="detailTitle">订单详情</h1>
+      </div>
+      <div class="topbar-actions">
+        <a class="secondary-button" href="/admin">返回列表</a>
+        <a class="secondary-button" href="/admin/logout">退出登录</a>
+      </div>
+    </header>
+
+    <main class="admin-shell detail-shell">
+      <section class="panel">
+        <div id="detailMessage" class="message" role="status"></div>
+
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span>订单编号</span>
+            <strong id="orderNo">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>客户姓名</span>
+            <strong id="customerName">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>联系方式</span>
+            <strong id="contact">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>任务类型</span>
+            <strong id="taskType">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>截止时间</span>
+            <strong id="deadline">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>提交时间</span>
+            <strong id="createdAt">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>当前状态</span>
+            <strong id="currentStatus">-</strong>
+          </div>
+        </div>
+
+        <div class="content-block">
+          <h2>具体需求</h2>
+          <p id="requirement" class="preserve-lines">-</p>
+        </div>
+
+        <div class="content-block">
+          <h2>附加备注</h2>
+          <p id="extraNote" class="preserve-lines">-</p>
+        </div>
+
+        <div class="content-block">
+          <h2>上传文件</h2>
+          <ul id="fileList" class="file-list"></ul>
+        </div>
+
+        <form id="detailForm" class="stack-form admin-edit-form">
+          <div class="form-grid">
+            <label>
+              <span>当前状态</span>
+              <select name="status" id="statusSelect" required>
+                <option>未处理</option>
+                <option>处理中</option>
+                <option>已完成</option>
+                <option>已取消</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            <span>内部备注</span>
+            <textarea
+              name="internal_note"
+              id="internalNote"
+              rows="6"
+              placeholder="仅后台可见"
+            ></textarea>
+          </label>
+
+          <div class="actions">
+            <button type="submit" class="primary-button">保存修改</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

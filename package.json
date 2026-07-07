@@ -1,0 +1,25 @@
+{
+  "name": "customer-requirement-mvp",
+  "version": "1.0.0",
+  "description": "客户需求提交与后台管理 MVP",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "express",
+    "sqlite",
+    "multer",
+    "mvp"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "multer": "^2.0.2"
+  }
+}

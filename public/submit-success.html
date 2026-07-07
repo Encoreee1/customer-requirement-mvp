@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>需求提交成功</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script defer src="/js/main.js"></script>
+  </head>
+  <body data-page="submit-success">
+    <main class="page-shell submit-shell success-detail-shell">
+      <section class="panel form-panel success-detail-panel">
+        <div class="page-heading">
+          <p class="eyebrow">提交结果</p>
+          <h1>需求提交成功</h1>
+        </div>
+
+        <section class="success-summary" aria-labelledby="successTitle">
+          <div>
+            <p id="successTitle" class="success-title">订单已成功创建</p>
+            <p class="success-copy">
+              工作人员会根据提交的信息与你联系，请先保存好订单号。
+            </p>
+          </div>
+          <div class="order-no-box">
+            <span>订单号</span>
+            <strong id="successPageOrderNo">-</strong>
+          </div>
+        </section>
+
+        <p id="successFallbackNote" class="message message-error is-hidden">
+          当前页面没有读取到本次提交的完整临时信息，请以订单号为准并妥善保存。
+        </p>
+
+        <div class="detail-grid">
+          <div class="detail-item">
+            <span>任务类型</span>
+            <strong id="successTaskType">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>联系方式</span>
+            <strong id="successContact">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>截止时间</span>
+            <strong id="successDeadline">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>提交时间</span>
+            <strong id="successCreatedAt">-</strong>
+          </div>
+          <div class="detail-item">
+            <span>当前状态</span>
+            <strong id="successStatus">-</strong>
+          </div>
+        </div>
+
+        <section class="notice-panel">
+          <h2>后续说明</h2>
+          <ul class="notice-list">
+            <li>请保存订单号，后续可用于查询需求处理进度。</li>
+            <li>工作人员会根据提交的信息与你联系。</li>
+            <li>如果需要补充材料，请等待后续功能或通过现有联系方式沟通。</li>
+          </ul>
+        </section>
+
+        <div class="actions">
+          <a class="primary-button" href="/submit">继续提交新需求</a>
+          <a class="secondary-button" href="/">返回首页</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>客户需求提交</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script defer src="/js/main.js"></script>
+  </head>
+  <body data-page="submit">
+    <main class="page-shell submit-shell">
+      <section class="panel form-panel">
+        <div class="page-heading">
+          <p class="eyebrow">需求提交</p>
+          <h1>客户需求提交</h1>
+        </div>
+
+        <form id="submitForm" class="stack-form" enctype="multipart/form-data">
+          <div class="form-grid">
+            <label>
+              <span>姓名或昵称 <strong>*</strong></span>
+              <input
+                type="text"
+                name="customer_name"
+                autocomplete="name"
+                required
+              />
+            </label>
+
+            <label>
+              <span>联系方式 <strong>*</strong></span>
+              <input
+                type="text"
+                name="contact"
+                placeholder="微信、QQ、手机号或邮箱"
+                autocomplete="tel"
+                required
+              />
+            </label>
+
+            <label>
+              <span>任务类型 <strong>*</strong></span>
+              <select name="task_type" required>
+                <option value="">请选择</option>
+                <option>课设报告</option>
+                <option>实验报告</option>
+                <option>PPT制作</option>
+                <option>代码作业</option>
+                <option>论文/文档</option>
+                <option>其他</option>
+              </select>
+            </label>
+
+            <label>
+              <span>截止时间 <strong>*</strong></span>
+              <input type="datetime-local" name="deadline" required />
+            </label>
+          </div>
+
+          <label>
+            <span>具体需求 <strong>*</strong></span>
+            <textarea
+              name="requirement"
+              rows="7"
+              placeholder="请填写任务要求、格式、字数、参考资料等信息"
+              required
+            ></textarea>
+          </label>
+
+          <label>
+            <span>附加备注</span>
+            <textarea
+              name="extra_note"
+              rows="4"
+              placeholder="其他补充说明"
+            ></textarea>
+          </label>
+
+          <label>
+            <span>上传材料</span>
+            <input
+              type="file"
+              name="materials"
+              multiple
+              accept=".doc,.docx,.pdf,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.png,.jpg,.jpeg"
+            />
+          </label>
+
+          <p class="hint">
+            支持 doc、docx、pdf、xls、xlsx、ppt、pptx、zip、rar、png、jpg、jpeg；单个文件最大 100MB。
+          </p>
+
+          <div id="submitMessage" class="message" role="status"></div>
+
+          <div class="actions">
+            <button type="submit" class="primary-button">提交需求</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>
