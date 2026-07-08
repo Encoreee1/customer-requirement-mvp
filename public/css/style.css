@@ -268,6 +268,22 @@ textarea:focus {
   margin-bottom: 0;
 }
 
+.query-panel {
+  display: grid;
+  gap: 24px;
+}
+
+.query-result {
+  display: grid;
+  gap: 22px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.query-summary {
+  margin-top: 0;
+}
+
 .success-summary {
   display: grid;
   gap: 16px;

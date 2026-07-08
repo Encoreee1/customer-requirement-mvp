@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>查询订单进度</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script defer src="/js/main.js"></script>
+  </head>
+  <body data-page="order-query">
+    <main class="page-shell submit-shell">
+      <section class="panel form-panel query-panel">
+        <div class="page-heading">
+          <p class="eyebrow">订单查询</p>
+          <h1>查询订单进度</h1>
+        </div>
+
+        <form id="orderQueryForm" class="stack-form">
+          <div class="form-grid">
+            <label>
+              <span>订单号 <strong>*</strong></span>
+              <input
+                type="text"
+                name="order_no"
+                autocomplete="off"
+                placeholder="例如 DD20260708001"
+                required
+              />
+            </label>
+
+            <label>
+              <span>联系方式 <strong>*</strong></span>
+              <input
+                type="text"
+                name="contact"
+                placeholder="提交订单时填写的联系方式"
+                autocomplete="tel"
+                required
+              />
+            </label>
+          </div>
+
+          <div id="orderQueryMessage" class="message" role="status"></div>
+
+          <div class="actions">
+            <button type="submit" class="primary-button">查询订单</button>
+            <a class="secondary-button" href="/submit">返回提交页</a>
+          </div>
+        </form>
+
+        <section
+          id="orderQueryResult"
+          class="query-result is-hidden"
+          aria-live="polite"
+        >
+          <div class="success-summary query-summary">
+            <div>
+              <p class="success-title">已查询到订单</p>
+              <p class="success-copy">以下为客户可见的订单基础信息。</p>
+            </div>
+            <div class="order-no-box">
+              <span>订单号</span>
+              <strong id="queryOrderNo">-</strong>
+            </div>
+          </div>
+
+          <div class="detail-grid">
+            <div class="detail-item">
+              <span>任务类型</span>
+              <strong id="queryTaskType">-</strong>
+            </div>
+            <div class="detail-item">
+              <span>联系方式</span>
+              <strong id="queryContact">-</strong>
+            </div>
+            <div class="detail-item">
+              <span>截止时间</span>
+              <strong id="queryDeadline">-</strong>
+            </div>
+            <div class="detail-item">
+              <span>提交时间</span>
+              <strong id="queryCreatedAt">-</strong>
+            </div>
+            <div class="detail-item">
+              <span>当前状态</span>
+              <strong id="queryStatus">-</strong>
+            </div>
+            <div class="detail-item">
+              <span>上传文件数量</span>
+              <strong id="queryFileCount">-</strong>
+            </div>
+          </div>
+
+          <div id="queryRequirementBlock" class="content-block is-hidden">
+            <h2>需求摘要</h2>
+            <p id="queryRequirement" class="preserve-lines">-</p>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

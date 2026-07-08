@@ -20,6 +20,7 @@
     const page = document.body.dataset.page;
     if (page === 'submit') initSubmitPage();
     if (page === 'submit-success') initSubmitSuccessPage();
+    if (page === 'order-query') initOrderQueryPage();
     if (page === 'admin-login') initLoginPage();
     if (page === 'admin-list') initAdminListPage();
     if (page === 'admin-detail') initAdminDetailPage();
@@ -184,10 +185,14 @@
     const orderNo = urlOrderNo || storedOrderNo;
     const detail = canUseStoredData ? storedData : {};
     const fallbackNote = document.querySelector('#successFallbackNote');
+    const queryLink = document.querySelector('#successQueryLink');
 
     if (orderNo) {
       document.title = `${orderNo} - 需求提交成功`;
       setText('#successPageOrderNo', orderNo);
+      if (queryLink) {
+        queryLink.href = `/order-query?orderNo=${encodeURIComponent(orderNo)}`;
+      }
     } else {
       setText('#successPageOrderNo', '未获取到订单号');
       if (fallbackNote) {
@@ -208,6 +213,91 @@
     document.querySelector('#successStatus').innerHTML = status
       ? statusBadge(status)
       : '<span class="muted">无法确认</span>';
+  }
+
+  function initOrderQueryPage() {
+    const form = document.querySelector('#orderQueryForm');
+    const message = document.querySelector('#orderQueryMessage');
+    const result = document.querySelector('#orderQueryResult');
+    const button = form.querySelector('button[type="submit"]');
+    const params = new URLSearchParams(window.location.search);
+    const urlOrderNo = (params.get('orderNo') || '').trim();
+
+    if (urlOrderNo) {
+      form.order_no.value = urlOrderNo;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setMessage(message, '', '');
+      result.classList.add('is-hidden');
+
+      const orderNo = getFormValue(form, 'order_no');
+      const contact = getFormValue(form, 'contact');
+      if (!orderNo || !contact) {
+        setMessage(message, '请填写订单号和联系方式。', 'error');
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = '查询中...';
+
+      try {
+        const response = await fetch('/api/customer/orders/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            order_no: orderNo,
+            contact,
+          }),
+        });
+        const data = await readJson(response);
+        if (!data) return;
+
+        if (!response.ok || !data.success) {
+          setMessage(
+            message,
+            data.message || '未查询到订单，请确认订单号和联系方式是否正确。',
+            'error'
+          );
+          return;
+        }
+
+        renderOrderQueryResult(data.data || {});
+        setMessage(message, '查询成功。', 'success');
+        result.classList.remove('is-hidden');
+      } catch (error) {
+        setMessage(message, '网络异常，请稍后重试。', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = '查询订单';
+      }
+    });
+  }
+
+  function renderOrderQueryResult(order) {
+    const requirement = (order.requirement_summary || '').trim();
+
+    setText('#queryOrderNo', order.order_no || '-');
+    setText('#queryTaskType', order.task_type || '-');
+    setText('#queryContact', order.contact || '-');
+    setText('#queryDeadline', formatDateTime(order.deadline));
+    setText('#queryCreatedAt', formatDateTime(order.created_at));
+    setText('#queryFileCount', `${Number(order.file_count || 0)} 个`);
+
+    const status =
+      typeof order.status_label === 'string' ? order.status_label.trim() : '';
+    document.querySelector('#queryStatus').innerHTML = status
+      ? statusBadge(status)
+      : '<span class="muted">无法确认</span>';
+
+    const requirementBlock = document.querySelector('#queryRequirementBlock');
+    if (requirement) {
+      setText('#queryRequirement', requirement);
+      requirementBlock.classList.remove('is-hidden');
+    } else {
+      requirementBlock.classList.add('is-hidden');
+    }
   }
 
   function initLoginPage() {
