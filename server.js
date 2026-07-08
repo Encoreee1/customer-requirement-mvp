@@ -91,6 +91,8 @@ function trimText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+const customerOrderNotFoundMessage = '未查询到订单，请确认订单号和联系方式是否正确。';
+
 function requireAdmin(req, res, next) {
   if (req.session && req.session.isAdmin) {
     next();
@@ -138,6 +140,13 @@ function sendSubmitSuccessPage(_req, res) {
 
 app.get('/submit-success', sendSubmitSuccessPage);
 app.get('/submit-success.html', sendSubmitSuccessPage);
+
+function sendOrderQueryPage(_req, res) {
+  res.sendFile(path.join(__dirname, 'public', 'order-query.html'));
+}
+
+app.get('/order-query', sendOrderQueryPage);
+app.get('/order-query.html', sendOrderQueryPage);
 
 app.post('/api/orders', uploadMiddleware, (req, res) => {
   const orderData = {
@@ -194,6 +203,38 @@ app.post('/api/orders', uploadMiddleware, (req, res) => {
     cleanupUploadedFiles(req.files);
     console.error(error);
     res.status(500).json({ success: false, message: '提交失败，请稍后重试。' });
+  }
+});
+
+app.post('/api/customer/orders/query', (req, res) => {
+  const orderNo = trimText(req.body.order_no || req.body.orderNo);
+  const contact = trimText(req.body.contact);
+
+  if (!orderNo || !contact) {
+    res.status(400).json({
+      success: false,
+      message: '请填写订单号和联系方式。',
+    });
+    return;
+  }
+
+  try {
+    const order = database.getCustomerVisibleOrder(orderNo, contact);
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        message: customerOrderNotFoundMessage,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: order,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: '查询失败，请稍后重试。' });
   }
 });
 
@@ -316,5 +357,6 @@ app.use((error, _req, res, _next) => {
 app.listen(config.port, () => {
   console.log(`客户需求提交与后台管理 MVP 已启动：http://localhost:${config.port}`);
   console.log(`客户提交页：http://localhost:${config.port}/submit`);
+  console.log(`客户订单查询页：http://localhost:${config.port}/order-query`);
   console.log(`后台登录页：http://localhost:${config.port}/admin/login`);
 });

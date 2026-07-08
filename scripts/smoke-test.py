@@ -54,10 +54,21 @@ def main():
           page.fill('textarea[name="extra_note"]', "这是自动化验收提交。")
           page.set_input_files('input[name="materials"]', [str(pdf_file), str(jpg_file)])
           page.click('button:has-text("提交需求")')
-          page.wait_for_selector("#successPanel:not(.is-hidden)")
+          page.wait_for_url(re.compile(r".*/submit-success\?orderNo=DD\d{8}\d{3,}"))
+          page.wait_for_selector("#successPageOrderNo")
 
-          order_no = page.locator("#successOrderNo").inner_text().strip()
+          order_no = page.locator("#successPageOrderNo").inner_text().strip()
           assert re.fullmatch(r"DD\d{8}\d{3,}", order_no), order_no
+          expect(page.locator("#successContact")).to_contain_text("weixin-test-001")
+
+          page.click("#successQueryLink")
+          page.wait_for_url(f"{BASE_URL}/order-query?orderNo={order_no}")
+          expect(page.locator('input[name="order_no"]')).to_have_value(order_no)
+          page.fill('input[name="contact"]', "weixin-test-001")
+          page.click('#orderQueryForm button[type="submit"]')
+          page.wait_for_selector("#orderQueryResult:not(.is-hidden)")
+          expect(page.locator("#queryOrderNo")).to_contain_text(order_no)
+          expect(page.locator("#queryContact")).to_contain_text("weixin-test-001")
 
           page.goto(f"{BASE_URL}/admin/login")
           page.wait_for_load_state("networkidle")
@@ -84,6 +95,14 @@ def main():
           page.fill("#internalNote", "已确认材料，进入处理完成状态。")
           page.click('button:has-text("保存修改")')
           expect(page.locator("#detailMessage")).to_contain_text("保存成功")
+
+          page.goto(f"{BASE_URL}/order-query?orderNo={order_no}")
+          page.wait_for_load_state("networkidle")
+          page.fill('input[name="contact"]', "weixin-test-001")
+          page.click('#orderQueryForm button[type="submit"]')
+          page.wait_for_selector("#orderQueryResult:not(.is-hidden)")
+          expect(page.locator("#queryStatus")).to_contain_text("已完成")
+          assert "已确认材料，进入处理完成状态。" not in page.content()
 
           page.goto(f"{BASE_URL}/admin/logout")
           page.wait_for_url(f"{BASE_URL}/admin/login")

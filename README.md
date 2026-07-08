@@ -19,6 +19,7 @@ npm start
 启动后访问：
 
 - 客户提交页：http://localhost:3000/submit
+- 客户订单查询页：http://localhost:3000/order-query
 - 后台登录页：http://localhost:3000/admin/login
 
 ## 默认后台账号
@@ -59,6 +60,7 @@ SESSION_SECRET=please-change-this-secret
 
 - `/submit`：客户需求提交页
 - `/submit-success`：提交成功详情页
+- `/order-query`：客户订单查询页，需要订单号和提交时填写的联系方式
 - `/admin/login`：后台登录页
 - `/admin`：后台订单列表
 - `/admin/orders/:id`：订单详情页
@@ -84,14 +86,16 @@ SESSION_SECRET=please-change-this-secret
 2. 填写客户姓名、联系方式、任务类型、截止时间、具体需求
 3. 上传一个或多个支持格式的文件
 4. 提交后确认跳转到提交成功详情页，并显示订单编号，例如 `DD20260707001`
-5. 打开 http://localhost:3000/admin/login
-6. 使用 `admin / admin123` 登录
-7. 在后台列表查看刚提交的订单
-8. 点击“查看”进入详情页
-9. 检查需求内容、备注和上传文件列表
-10. 点击文件链接下载
-11. 修改状态和内部备注并保存
-12. 退出登录后，直接访问 `/admin` 会回到登录页
+5. 打开 http://localhost:3000/order-query
+6. 输入订单号和提交时填写的联系方式，确认可查询客户可见订单信息
+7. 打开 http://localhost:3000/admin/login
+8. 使用 `admin / admin123` 登录
+9. 在后台列表查看刚提交的订单
+10. 点击“查看”进入详情页
+11. 检查需求内容、备注和上传文件列表
+12. 点击文件链接下载
+13. 修改状态和内部备注并保存
+14. 退出登录后，直接访问 `/admin` 会回到登录页
 
 ## 后续可优化
 

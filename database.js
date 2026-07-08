@@ -305,6 +305,56 @@ function getOrderWithFiles(orderId) {
   };
 }
 
+function getCustomerVisibleOrder(orderNo, contact) {
+  const order = db
+    .prepare(
+      `
+        SELECT
+          order_no,
+          task_type,
+          contact,
+          deadline,
+          created_at,
+          status,
+          requirement,
+          (
+            SELECT COUNT(*)
+            FROM files
+            WHERE files.order_id = orders.id
+          ) AS file_count
+        FROM orders
+        WHERE order_no = @order_no
+          AND contact = @contact
+        LIMIT 1
+      `
+    )
+    .get({
+      order_no: orderNo,
+      contact,
+    });
+
+  if (!order) {
+    return null;
+  }
+
+  const requirement =
+    typeof order.requirement === 'string' ? order.requirement.trim() : '';
+  const requirementSummary =
+    requirement.length > 120 ? `${requirement.slice(0, 120)}...` : requirement;
+
+  return {
+    order_no: order.order_no,
+    task_type: order.task_type,
+    contact: order.contact,
+    deadline: order.deadline,
+    created_at: order.created_at,
+    status: order.status,
+    status_label: order.status,
+    requirement_summary: requirementSummary,
+    file_count: Number(order.file_count || 0),
+  };
+}
+
 function updateOrder(orderId, data) {
   const timestamp = nowIso();
   const result = db
@@ -350,6 +400,7 @@ module.exports = {
   createOrder,
   getOrders,
   getOrderWithFiles,
+  getCustomerVisibleOrder,
   updateOrder,
   getFileById,
 };
