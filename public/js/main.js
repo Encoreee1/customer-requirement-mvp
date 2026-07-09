@@ -15,12 +15,14 @@
   ];
   const maxFileSize = 100 * 1024 * 1024;
   const submitSuccessStorageKey = 'customerRequirementLastSubmitSuccess';
+  const supplementContactStorageKey = 'customerRequirementLastSupplementContact';
 
   document.addEventListener('DOMContentLoaded', () => {
     const page = document.body.dataset.page;
     if (page === 'submit') initSubmitPage();
     if (page === 'submit-success') initSubmitSuccessPage();
     if (page === 'order-query') initOrderQueryPage();
+    if (page === 'supplement-upload') initSupplementUploadPage();
     if (page === 'admin-login') initLoginPage();
     if (page === 'admin-list') initAdminListPage();
     if (page === 'admin-detail') initAdminDetailPage();
@@ -114,6 +116,23 @@
     }
   }
 
+  function readSupplementContact() {
+    try {
+      return sessionStorage.getItem(supplementContactStorageKey) || '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function saveSupplementContact(contact) {
+    if (!contact) return;
+    try {
+      sessionStorage.setItem(supplementContactStorageKey, contact);
+    } catch (error) {
+      // sessionStorage is only used for convenience, never as a credential.
+    }
+  }
+
   function initSubmitPage() {
     const form = document.querySelector('#submitForm');
     const message = document.querySelector('#submitMessage');
@@ -186,12 +205,18 @@
     const detail = canUseStoredData ? storedData : {};
     const fallbackNote = document.querySelector('#successFallbackNote');
     const queryLink = document.querySelector('#successQueryLink');
+    const supplementLink = document.querySelector('#successSupplementLink');
 
     if (orderNo) {
       document.title = `${orderNo} - 需求提交成功`;
       setText('#successPageOrderNo', orderNo);
       if (queryLink) {
         queryLink.href = `/order-query?orderNo=${encodeURIComponent(orderNo)}`;
+      }
+      if (supplementLink) {
+        supplementLink.href = `/supplement-upload?orderNo=${encodeURIComponent(
+          orderNo
+        )}`;
       }
     } else {
       setText('#successPageOrderNo', '未获取到订单号');
@@ -203,6 +228,10 @@
 
     if (!canUseStoredData && fallbackNote) {
       fallbackNote.classList.remove('is-hidden');
+    }
+
+    if (detail.contact) {
+      saveSupplementContact(detail.contact);
     }
 
     setText('#successTaskType', detail.task_type || detail.taskType || '-');
@@ -221,7 +250,7 @@
     const result = document.querySelector('#orderQueryResult');
     const button = form.querySelector('button[type="submit"]');
     const params = new URLSearchParams(window.location.search);
-    const urlOrderNo = (params.get('orderNo') || '').trim();
+    const urlOrderNo = (params.get('orderNo') || params.get('order_no') || '').trim();
 
     if (urlOrderNo) {
       form.order_no.value = urlOrderNo;
@@ -263,6 +292,7 @@
           return;
         }
 
+        saveSupplementContact(contact);
         renderOrderQueryResult(data.data || {});
         setMessage(message, '查询成功。', 'success');
         result.classList.remove('is-hidden');
@@ -277,8 +307,9 @@
 
   function renderOrderQueryResult(order) {
     const requirement = (order.requirement_summary || '').trim();
+    const orderNo = order.order_no || '';
 
-    setText('#queryOrderNo', order.order_no || '-');
+    setText('#queryOrderNo', orderNo || '-');
     setText('#queryTaskType', order.task_type || '-');
     setText('#queryContact', order.contact || '-');
     setText('#queryDeadline', formatDateTime(order.deadline));
@@ -291,6 +322,11 @@
       ? statusBadge(status)
       : '<span class="muted">无法确认</span>';
 
+    const supplementLink = document.querySelector('#querySupplementLink');
+    if (supplementLink && orderNo) {
+      supplementLink.href = `/supplement-upload?orderNo=${encodeURIComponent(orderNo)}`;
+    }
+
     const requirementBlock = document.querySelector('#queryRequirementBlock');
     if (requirement) {
       setText('#queryRequirement', requirement);
@@ -298,6 +334,87 @@
     } else {
       requirementBlock.classList.add('is-hidden');
     }
+  }
+
+  function initSupplementUploadPage() {
+    const form = document.querySelector('#supplementUploadForm');
+    const message = document.querySelector('#supplementUploadMessage');
+    const result = document.querySelector('#supplementUploadResult');
+    const button = form.querySelector('button[type="submit"]');
+    const fileInput = form.querySelector('input[type="file"]');
+    const params = new URLSearchParams(window.location.search);
+    const urlOrderNo = (params.get('orderNo') || params.get('order_no') || '').trim();
+    const urlContact = (params.get('contact') || '').trim();
+    const storedContact = readSupplementContact().trim();
+
+    if (urlOrderNo) {
+      form.order_no.value = urlOrderNo;
+    }
+    if (urlContact || storedContact) {
+      form.contact.value = urlContact || storedContact;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setMessage(message, '', '');
+      result.classList.add('is-hidden');
+
+      const orderNo = getFormValue(form, 'order_no');
+      const contact = getFormValue(form, 'contact');
+      const supplementNote = getFormValue(form, 'supplement_note');
+      const files = Array.from(fileInput.files || []);
+
+      if (!orderNo || !contact) {
+        setMessage(message, '请填写订单号和联系方式。', 'error');
+        return;
+      }
+
+      if (!supplementNote && files.length === 0) {
+        setMessage(message, '请填写补充说明或上传补充资料。', 'error');
+        return;
+      }
+
+      const fileError = validateFiles(fileInput);
+      if (fileError) {
+        setMessage(message, fileError, 'error');
+        return;
+      }
+
+      saveSupplementContact(contact);
+      button.disabled = true;
+      button.textContent = '上传中...';
+
+      try {
+        const response = await fetch('/api/customer/orders/supplements', {
+          method: 'POST',
+          body: new FormData(form),
+        });
+        const data = await readJson(response);
+        if (!data) return;
+
+        if (!response.ok || !data.success) {
+          setMessage(message, data.message || '补充资料上传失败，请稍后重试。', 'error');
+          return;
+        }
+
+        renderSupplementUploadResult(data.data || {});
+        setMessage(message, data.message || '补充资料上传成功。', 'success');
+        result.classList.remove('is-hidden');
+        fileInput.value = '';
+      } catch (error) {
+        setMessage(message, '网络异常，请稍后重试。', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = '提交补充资料';
+      }
+    });
+  }
+
+  function renderSupplementUploadResult(data) {
+    setText('#supplementResultOrderNo', data.order_no || '-');
+    setText('#supplementResultFileCount', `${Number(data.file_count || 0)} 个`);
+    setText('#supplementResultHasNote', data.has_note ? '已填写' : '未填写');
+    setText('#supplementResultCreatedAt', formatDateTime(data.created_at));
   }
 
   function initLoginPage() {
@@ -561,6 +678,62 @@
     return parts[parts.length - 1];
   }
 
+  function renderSupplementList(container, supplements) {
+    if (!container) return;
+
+    if (!supplements.length) {
+      container.innerHTML = '<p class="muted supplement-empty">暂无补充资料</p>';
+      return;
+    }
+
+    container.innerHTML = supplements
+      .map((supplement, index) => {
+        const note = (supplement.supplement_note || '').trim();
+        const files = Array.isArray(supplement.files) ? supplement.files : [];
+        const filesHtml = files.length
+          ? `
+            <ul class="file-list supplement-file-list">
+              ${files
+                .map(
+                  (file) => `
+                    <li>
+                      <a href="/admin/files/${file.id}/download">
+                        ${escapeHtml(file.original_name)}
+                      </a>
+                      <span>
+                        ${escapeHtml(formatFileSize(file.size))}
+                        · ${escapeHtml(formatDateTime(file.created_at))}
+                      </span>
+                    </li>
+                  `
+                )
+                .join('')}
+            </ul>
+          `
+          : '<p class="muted supplement-empty">本批次未上传文件</p>';
+
+        return `
+          <article class="supplement-item">
+            <div class="supplement-heading">
+              <strong>补充批次 ${index + 1}</strong>
+              <span>${escapeHtml(formatDateTime(supplement.created_at))}</span>
+            </div>
+            <div class="supplement-note-block">
+              <span>补充说明</span>
+              <p class="preserve-lines">${
+                note ? escapeHtml(note) : '<span class="muted">无补充说明</span>'
+              }</p>
+            </div>
+            <div class="supplement-files-block">
+              <span>补充文件</span>
+              ${filesHtml}
+            </div>
+          </article>
+        `;
+      })
+      .join('');
+  }
+
   function initAdminDetailPage() {
     const orderId = getOrderIdFromPath();
     const form = document.querySelector('#detailForm');
@@ -568,6 +741,7 @@
     const statusSelect = document.querySelector('#statusSelect');
     const internalNote = document.querySelector('#internalNote');
     const fileList = document.querySelector('#fileList');
+    const supplementList = document.querySelector('#supplementList');
     const button = form.querySelector('button[type="submit"]');
 
     async function loadDetail() {
@@ -613,6 +787,7 @@
             .join('');
         }
 
+        renderSupplementList(supplementList, data.supplements || []);
         setMessage(message, '', '');
       } catch (error) {
         setMessage(message, '网络异常，请稍后重试。', 'error');

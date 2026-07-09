@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>补充上传资料</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <script defer src="/js/main.js"></script>
+  </head>
+  <body data-page="supplement-upload">
+    <main class="page-shell submit-shell">
+      <section class="panel form-panel query-panel">
+        <div class="page-heading">
+          <p class="eyebrow">补充资料</p>
+          <h1>补充上传资料</h1>
+        </div>
+
+        <form id="supplementUploadForm" class="stack-form">
+          <div class="form-grid">
+            <label>
+              <span>订单号 <strong>*</strong></span>
+              <input
+                type="text"
+                name="order_no"
+                autocomplete="off"
+                placeholder="例如 DD20260708001"
+                required
+              />
+            </label>
+
+            <label>
+              <span>联系方式 <strong>*</strong></span>
+              <input
+                type="text"
+                name="contact"
+                placeholder="提交订单时填写的联系方式"
+                autocomplete="tel"
+                required
+              />
+            </label>
+
+            <label class="form-span-2">
+              <span>补充说明</span>
+              <textarea
+                name="supplement_note"
+                rows="5"
+                placeholder="可填写需要补充说明的内容"
+              ></textarea>
+            </label>
+
+            <label class="form-span-2">
+              <span>补充资料</span>
+              <input
+                type="file"
+                name="materials"
+                multiple
+                accept=".doc,.docx,.pdf,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.png,.jpg,.jpeg"
+              />
+              <small class="hint">支持文档、压缩包和图片，单个文件最大 100MB。</small>
+            </label>
+          </div>
+
+          <div id="supplementUploadMessage" class="message" role="status"></div>
+
+          <div class="actions">
+            <button type="submit" class="primary-button">提交补充资料</button>
+            <a class="secondary-button" href="/submit">返回提交页</a>
+            <a class="secondary-button" href="/order-query">返回订单查询</a>
+          </div>
+        </form>
+
+        <section
+          id="supplementUploadResult"
+          class="query-result is-hidden"
+          aria-live="polite"
+        >
+          <div class="success-summary query-summary">
+            <div>
+              <p class="success-title">补充资料上传成功</p>
+              <p class="success-copy">工作人员可在后台订单详情中查看本次补充内容。</p>
+            </div>
+            <div class="order-no-box">
+              <span>订单号</span>
+              <strong id="supplementResultOrderNo">-</strong>
+            </div>
+          </div>
+
+          <div class="detail-grid">
+            <div class="detail-item">
+              <span>补充文件数量</span>
+              <strong id="supplementResultFileCount">-</strong>
+            </div>
+            <div class="detail-item">
+              <span>是否填写说明</span>
+              <strong id="supplementResultHasNote">-</strong>
+            </div>
+            <div class="detail-item">
+              <span>提交时间</span>
+              <strong id="supplementResultCreatedAt">-</strong>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

@@ -122,6 +122,7 @@ function uploadMiddleware(req, res, next) {
         ? '单个文件不能超过 100MB。'
         : error.message || '上传失败，请检查文件格式和大小。';
 
+    cleanupUploadedFiles(req.files);
     res.status(400).json({ success: false, message });
   });
 }
@@ -147,6 +148,13 @@ function sendOrderQueryPage(_req, res) {
 
 app.get('/order-query', sendOrderQueryPage);
 app.get('/order-query.html', sendOrderQueryPage);
+
+function sendSupplementUploadPage(_req, res) {
+  res.sendFile(path.join(__dirname, 'public', 'supplement-upload.html'));
+}
+
+app.get('/supplement-upload', sendSupplementUploadPage);
+app.get('/supplement-upload.html', sendSupplementUploadPage);
 
 app.post('/api/orders', uploadMiddleware, (req, res) => {
   const orderData = {
@@ -235,6 +243,70 @@ app.post('/api/customer/orders/query', (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: '查询失败，请稍后重试。' });
+  }
+});
+
+app.post('/api/customer/orders/supplements', uploadMiddleware, (req, res) => {
+  const orderNo = trimText(req.body.order_no || req.body.orderNo);
+  const contact = trimText(req.body.contact);
+  const supplementNote = trimText(req.body.supplement_note);
+  const uploadedFiles = (req.files || []).map((file) => ({
+    ...file,
+    originalname: normalizeOriginalName(file.originalname),
+  }));
+
+  if (!orderNo || !contact) {
+    cleanupUploadedFiles(uploadedFiles);
+    res.status(400).json({
+      success: false,
+      message: '请填写订单号和联系方式。',
+    });
+    return;
+  }
+
+  if (!supplementNote && uploadedFiles.length === 0) {
+    cleanupUploadedFiles(uploadedFiles);
+    res.status(400).json({
+      success: false,
+      message: '请填写补充说明或上传补充资料。',
+    });
+    return;
+  }
+
+  try {
+    const result = database.createOrderSupplement(
+      orderNo,
+      contact,
+      supplementNote,
+      uploadedFiles
+    );
+
+    if (!result) {
+      cleanupUploadedFiles(uploadedFiles);
+      res.status(404).json({
+        success: false,
+        message: customerOrderNotFoundMessage,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: '补充资料上传成功',
+      data: {
+        order_no: result.orderNo,
+        file_count: result.fileCount,
+        has_note: result.hasNote,
+        created_at: result.createdAt,
+      },
+    });
+  } catch (error) {
+    cleanupUploadedFiles(uploadedFiles);
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: '补充资料上传失败，请稍后重试。',
+    });
   }
 });
 
@@ -358,5 +430,6 @@ app.listen(config.port, () => {
   console.log(`客户需求提交与后台管理 MVP 已启动：http://localhost:${config.port}`);
   console.log(`客户提交页：http://localhost:${config.port}/submit`);
   console.log(`客户订单查询页：http://localhost:${config.port}/order-query`);
+  console.log(`客户补充资料上传页：http://localhost:${config.port}/supplement-upload`);
   console.log(`后台登录页：http://localhost:${config.port}/admin/login`);
 });

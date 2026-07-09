@@ -13,6 +13,7 @@
 - 客户提交页：`public/submit.html`
 - 提交成功详情页：`public/submit-success.html`
 - 客户订单查询页：`public/order-query.html`
+- 客户补充资料上传页：`public/supplement-upload.html`
 - 后台登录页：`views/admin-login.html`
 - 后台列表页：`views/admin-list.html`
 - 后台详情页：`views/admin-detail.html`
@@ -31,6 +32,8 @@
 | GET | `/submit-success.html` | 否 | 返回提交成功详情页面，兼容带 `.html` 的访问路径 |
 | GET | `/order-query` | 否 | 返回客户订单查询页面 |
 | GET | `/order-query.html` | 否 | 返回客户订单查询页面，兼容带 `.html` 的访问路径 |
+| GET | `/supplement-upload` | 否 | 返回客户补充资料上传页面 |
+| GET | `/supplement-upload.html` | 否 | 返回客户补充资料上传页面，兼容带 `.html` 的访问路径 |
 | GET | `/admin/login` | 否 | 返回后台登录页面；已登录时跳转 `/admin` |
 | GET | `/admin` | 是 | 返回后台订单列表页面 |
 | GET | `/admin/orders/:id` | 是 | 返回后台订单详情页面 |
@@ -243,6 +246,82 @@
 }
 ```
 
+### 5.5 客户补充资料上传
+
+| 项目 | 当前实现 |
+| --- | --- |
+| 方法 | POST |
+| 路径 | `/api/customer/orders/supplements` |
+| 登录要求 | 否 |
+| 请求类型 | `multipart/form-data` |
+| 前端调用位置 | `public/js/main.js` 的补充资料上传页逻辑 |
+
+请求字段：
+
+| 字段名 | 类型 | 是否必填 | 说明 |
+| --- | --- | --- | --- |
+| `order_no` | string | 是 | 订单号；后端兼容 `orderNo` |
+| `contact` | string | 是 | 提交订单时填写的联系方式 |
+| `supplement_note` | string | 否 | 补充说明 |
+| `materials` | file[] | 否 | 补充资料，支持多文件 |
+
+上传规则：
+
+1. 必须同时填写订单号和联系方式。
+2. 必须同时匹配订单号和联系方式，不支持只凭订单号补充上传。
+3. 补充说明和补充文件至少需要提供一个。
+4. 文件扩展名和大小限制沿用订单提交材料规则。
+5. 上传成功只创建补充记录和补充文件关联，不修改订单基础信息、订单状态或内部备注。
+6. 校验失败、数据库失败或异常时，后端会清理本次请求已经保存到磁盘的上传文件。
+
+成功返回：
+
+```json
+{
+  "success": true,
+  "message": "补充资料上传成功",
+  "data": {
+    "order_no": "DD20260708001",
+    "file_count": 2,
+    "has_note": true,
+    "created_at": "2026-07-09T08:30:00.000Z"
+  }
+}
+```
+
+客户侧补充上传接口不返回：
+
+1. 数据库内部 `order_id`、`supplement_id` 或 `file_id`。
+2. `stored_name`、`file_path`、真实存储文件名或下载地址。
+3. 后台内部备注、管理员信息或其他后台专用字段。
+
+订单不存在或联系方式不匹配时，统一返回 404：
+
+```json
+{
+  "success": false,
+  "message": "未查询到订单，请确认订单号和联系方式是否正确。"
+}
+```
+
+订单号或联系方式为空时返回 400：
+
+```json
+{
+  "success": false,
+  "message": "请填写订单号和联系方式。"
+}
+```
+
+补充说明和文件都为空时返回 400：
+
+```json
+{
+  "success": false,
+  "message": "请填写补充说明或上传补充资料。"
+}
+```
+
 ## 6. 后台登录相关接口
 
 ### 6.1 登录页面
@@ -422,9 +501,32 @@
       "size": 12345,
       "created_at": "2026-07-07T06:30:00.000Z"
     }
+  ],
+  "supplements": [
+    {
+      "id": 1,
+      "supplement_note": "客户补充说明",
+      "created_at": "2026-07-09T08:30:00.000Z",
+      "files": [
+        {
+          "id": 12,
+          "original_name": "补充资料.pdf",
+          "mime_type": "application/pdf",
+          "size": 12345,
+          "created_at": "2026-07-09T08:30:00.000Z"
+        }
+      ]
+    }
   ]
 }
 ```
+
+兼容说明：
+
+1. `files` 字段继续保留，但只返回订单原始上传文件。
+2. 客户补充资料按批次放入 `supplements` 字段。
+3. `supplements[].files[].id` 仅供后台下载接口 `/admin/files/:id/download` 使用。
+4. 补充文件仍要求管理员登录后才能下载。
 
 订单不存在时返回 404：
 

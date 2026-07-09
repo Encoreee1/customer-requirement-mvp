@@ -1,6 +1,6 @@
 {
   "name": "customer-requirement-mvp",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "客户需求提交与后台管理 MVP",
   "main": "server.js",
   "scripts": {

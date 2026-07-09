@@ -32,7 +32,9 @@
 5. 设置 `foreign_keys = ON`。
 6. 如果不存在则创建 `orders` 表。
 7. 如果不存在则创建 `files` 表。
-8. 如果不存在则创建索引。
+8. 如果不存在则创建 `order_supplements` 表。
+9. 如果不存在则创建 `order_supplement_files` 表。
+10. 如果不存在则创建索引。
 
 当前没有独立迁移脚本。
 
@@ -98,7 +100,70 @@ FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
 ```
 
-## 6. 订单状态枚举值
+## 6. order_supplements 表结构
+
+`order_supplements` 表用于保存客户对已有订单发起的每一次补充资料提交。补充说明不直接写入 `files` 表。
+
+| 字段名 | 类型 | 是否必填 | 默认值 | 含义 |
+| --- | --- | --- | --- | --- |
+| `id` | INTEGER | 自动生成 | 自增 | 补充记录主键 |
+| `order_id` | INTEGER | 是 | 无 | 所属订单 id |
+| `supplement_note` | TEXT | 是 | 空字符串 | 客户填写的补充说明 |
+| `created_at` | TEXT | 是 | 无 | 补充记录创建时间，当前为 JavaScript ISO 字符串 |
+
+建表语句中的关键约束：
+
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+order_id INTEGER NOT NULL,
+supplement_note TEXT NOT NULL DEFAULT '',
+FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+```
+
+当前索引：
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_order_supplements_order_id
+ON order_supplements(order_id);
+```
+
+## 7. order_supplement_files 表结构
+
+`order_supplement_files` 表用于把补充批次和 `files` 表中的文件记录关联起来。
+
+| 字段名 | 类型 | 是否必填 | 默认值 | 含义 |
+| --- | --- | --- | --- | --- |
+| `id` | INTEGER | 自动生成 | 自增 | 关联记录主键 |
+| `supplement_id` | INTEGER | 是 | 无 | 所属补充记录 id |
+| `file_id` | INTEGER | 是 | 无 | 关联的文件 id |
+| `created_at` | TEXT | 是 | 无 | 关联记录创建时间，当前为 JavaScript ISO 字符串 |
+
+建表语句中的关键约束：
+
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+supplement_id INTEGER NOT NULL,
+file_id INTEGER NOT NULL UNIQUE,
+FOREIGN KEY (supplement_id) REFERENCES order_supplements(id) ON DELETE CASCADE,
+FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+```
+
+当前索引：
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_order_supplement_files_supplement_id
+ON order_supplement_files(supplement_id);
+```
+
+兼容策略：
+
+1. 不修改旧 `orders` 表结构，旧订单数据不受影响。
+2. 不修改旧 `files` 表结构，补充文件仍保存到 `files` 表。
+3. 原始上传文件是没有出现在 `order_supplement_files` 中的 `files` 记录。
+4. 补充上传文件通过 `order_supplement_files.file_id` 与补充批次关联。
+5. 只有说明、没有文件的补充记录允许存在；既没有说明也没有文件的提交会被后端拒绝。
+
+## 8. 订单状态枚举值
 
 当前订单状态枚举来自 `config.js`：
 
@@ -113,7 +178,7 @@ CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
 
 后台修改状态时，后端会校验状态必须属于上述枚举。
 
-## 7. 任务类型枚举值
+## 9. 任务类型枚举值
 
 当前任务类型枚举来自 `config.js`：
 
@@ -126,18 +191,23 @@ CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
 
 客户提交订单时，后端会校验 `task_type` 必须属于上述枚举。
 
-## 8. orders 和 files 的关系
+## 10. orders、files 和补充资料表的关系
 
 当前关系为：
 
 1. 一个订单可以关联 0 个、1 个或多个上传文件。
 2. 每个文件必须关联一个订单。
 3. `files.order_id` 外键引用 `orders.id`。
-4. 外键设置为 `ON DELETE CASCADE`。
+4. 一个订单可以关联 0 个、1 个或多个补充记录。
+5. 每个补充记录必须关联一个订单。
+6. 一个补充记录可以关联 0 个、1 个或多个补充文件。
+7. 每个补充文件仍在 `files` 表中保存一条文件记录。
+8. `order_supplement_files` 通过 `supplement_id` 和 `file_id` 连接补充记录与文件记录。
+9. 外键设置为 `ON DELETE CASCADE`。
 
 当前系统没有实现订单删除功能，因此级联删除规则暂未在业务界面中触发。
 
-## 9. 订单编号生成规则
+## 11. 订单编号生成规则
 
 当前订单编号由 `database.js` 中的 `nextOrderNo()` 生成：
 
@@ -152,7 +222,7 @@ CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
 
 当前实现通过查询当天最大 `order_no` 来生成下一编号。
 
-## 10. 文件存储字段说明
+## 12. 文件存储字段说明
 
 上传文件在磁盘上不会使用原始文件名保存，而是使用：
 
@@ -166,7 +236,7 @@ CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
 2. `stored_name` 用于定位 uploads 目录中的真实文件。
 3. `file_path` 当前保存相对路径，但下载接口实际使用 `config.uploadsDir + stored_name` 定位文件。
 
-## 11. 数据库变更规范
+## 13. 数据库变更规范
 
 后续数据库变更必须遵守：
 
@@ -178,4 +248,3 @@ CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
 6. 如果后续需要迁移脚本，应单独记录迁移文件、执行方式、回滚方式和测试方法。
 7. 不要直接手动改动生产或重要测试数据库文件；需要先备份。
 8. 新增表或字段后，必须同步更新 `API_CONTRACT.md` 中相关接口返回结构。
-
