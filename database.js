@@ -38,8 +38,29 @@ db.exec(`
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS order_supplements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    supplement_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS order_supplement_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplement_id INTEGER NOT NULL,
+    file_id INTEGER NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (supplement_id) REFERENCES order_supplements(id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
   CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
+  CREATE INDEX IF NOT EXISTS idx_order_supplements_order_id
+    ON order_supplements(order_id);
+  CREATE INDEX IF NOT EXISTS idx_order_supplement_files_supplement_id
+    ON order_supplement_files(supplement_id);
 `);
 
 const insertOrder = db.prepare(`
@@ -90,6 +111,30 @@ const insertFile = db.prepare(`
   )
 `);
 
+const insertSupplement = db.prepare(`
+  INSERT INTO order_supplements (
+    order_id,
+    supplement_note,
+    created_at
+  ) VALUES (
+    @order_id,
+    @supplement_note,
+    @created_at
+  )
+`);
+
+const insertSupplementFile = db.prepare(`
+  INSERT INTO order_supplement_files (
+    supplement_id,
+    file_id,
+    created_at
+  ) VALUES (
+    @supplement_id,
+    @file_id,
+    @created_at
+  )
+`);
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -126,6 +171,20 @@ function nextOrderNo() {
   return `${prefix}${String(nextSeq).padStart(3, '0')}`;
 }
 
+function insertUploadedFile(orderId, file, timestamp) {
+  const fileInfo = insertFile.run({
+    order_id: orderId,
+    original_name: normalizeOriginalName(file.originalname),
+    stored_name: file.filename,
+    file_path: path.posix.join('uploads', file.filename),
+    mime_type: file.mimetype || '',
+    size: file.size,
+    created_at: timestamp,
+  });
+
+  return Number(fileInfo.lastInsertRowid);
+}
+
 const createOrderTransaction = db.transaction((orderData, uploadedFiles) => {
   const timestamp = nowIso();
   const orderNo = nextOrderNo();
@@ -146,15 +205,7 @@ const createOrderTransaction = db.transaction((orderData, uploadedFiles) => {
 
   const orderId = Number(orderInfo.lastInsertRowid);
   for (const file of uploadedFiles) {
-    insertFile.run({
-      order_id: orderId,
-      original_name: normalizeOriginalName(file.originalname),
-      stored_name: file.filename,
-      file_path: path.posix.join('uploads', file.filename),
-      mime_type: file.mimetype || '',
-      size: file.size,
-      created_at: timestamp,
-    });
+    insertUploadedFile(orderId, file, timestamp);
   }
 
   return { id: orderId, orderNo, createdAt: timestamp, status: defaultStatus };
@@ -162,6 +213,63 @@ const createOrderTransaction = db.transaction((orderData, uploadedFiles) => {
 
 function createOrder(orderData, uploadedFiles) {
   return createOrderTransaction(orderData, uploadedFiles);
+}
+
+const createOrderSupplementTransaction = db.transaction(
+  (orderNo, contact, supplementNote, uploadedFiles) => {
+    const order = db
+      .prepare(
+        `
+          SELECT id, order_no
+          FROM orders
+          WHERE order_no = @order_no
+            AND contact = @contact
+          LIMIT 1
+        `
+      )
+      .get({
+        order_no: orderNo,
+        contact,
+      });
+
+    if (!order) {
+      return null;
+    }
+
+    const timestamp = nowIso();
+    const files = uploadedFiles || [];
+    const supplementInfo = insertSupplement.run({
+      order_id: order.id,
+      supplement_note: supplementNote || '',
+      created_at: timestamp,
+    });
+    const supplementId = Number(supplementInfo.lastInsertRowid);
+
+    for (const file of files) {
+      const fileId = insertUploadedFile(order.id, file, timestamp);
+      insertSupplementFile.run({
+        supplement_id: supplementId,
+        file_id: fileId,
+        created_at: timestamp,
+      });
+    }
+
+    return {
+      orderNo: order.order_no,
+      fileCount: files.length,
+      hasNote: Boolean((supplementNote || '').trim()),
+      createdAt: timestamp,
+    };
+  }
+);
+
+function createOrderSupplement(orderNo, contact, supplementNote, uploadedFiles) {
+  return createOrderSupplementTransaction(
+    orderNo,
+    contact,
+    supplementNote,
+    uploadedFiles
+  );
 }
 
 function escapeLike(value) {
@@ -289,8 +397,77 @@ function getOrderById(orderId) {
 
 function getFilesByOrderId(orderId) {
   return db
-    .prepare('SELECT * FROM files WHERE order_id = ? ORDER BY id ASC')
+    .prepare(
+      `
+        SELECT files.*
+        FROM files
+        LEFT JOIN order_supplement_files
+          ON order_supplement_files.file_id = files.id
+        WHERE files.order_id = ?
+          AND order_supplement_files.file_id IS NULL
+        ORDER BY files.id ASC
+      `
+    )
     .all(orderId);
+}
+
+function getSupplementsByOrderId(orderId) {
+  const supplements = db
+    .prepare(
+      `
+        SELECT id, supplement_note, created_at
+        FROM order_supplements
+        WHERE order_id = ?
+        ORDER BY datetime(created_at) ASC, id ASC
+      `
+    )
+    .all(orderId);
+
+  if (!supplements.length) {
+    return [];
+  }
+
+  const ids = supplements.map((supplement) => supplement.id);
+  const placeholders = ids.map(() => '?').join(', ');
+  const files = db
+    .prepare(
+      `
+        SELECT
+          order_supplement_files.supplement_id,
+          files.id,
+          files.original_name,
+          files.mime_type,
+          files.size,
+          files.created_at
+        FROM order_supplement_files
+        JOIN files ON files.id = order_supplement_files.file_id
+        WHERE order_supplement_files.supplement_id IN (${placeholders})
+        ORDER BY order_supplement_files.id ASC
+      `
+    )
+    .all(...ids);
+
+  const filesBySupplement = new Map();
+  for (const file of files) {
+    const supplementId = file.supplement_id;
+    if (!filesBySupplement.has(supplementId)) {
+      filesBySupplement.set(supplementId, []);
+    }
+    filesBySupplement.get(supplementId).push({
+      id: file.id,
+      original_name: file.original_name,
+      mime_type: file.mime_type,
+      size: file.size,
+      created_at: file.created_at,
+    });
+  }
+
+  return supplements.map((supplement) => ({
+    id: supplement.id,
+    supplement_note: supplement.supplement_note,
+    created_at: supplement.created_at,
+    files: filesBySupplement.get(supplement.id) || [],
+  }));
 }
 
 function getOrderWithFiles(orderId) {
@@ -302,6 +479,7 @@ function getOrderWithFiles(orderId) {
   return {
     order,
     files: getFilesByOrderId(orderId),
+    supplements: getSupplementsByOrderId(orderId),
   };
 }
 
@@ -320,7 +498,10 @@ function getCustomerVisibleOrder(orderNo, contact) {
           (
             SELECT COUNT(*)
             FROM files
+            LEFT JOIN order_supplement_files
+              ON order_supplement_files.file_id = files.id
             WHERE files.order_id = orders.id
+              AND order_supplement_files.file_id IS NULL
           ) AS file_count
         FROM orders
         WHERE order_no = @order_no
@@ -398,6 +579,7 @@ function getFileById(fileId) {
 
 module.exports = {
   createOrder,
+  createOrderSupplement,
   getOrders,
   getOrderWithFiles,
   getCustomerVisibleOrder,
