@@ -211,7 +211,20 @@
     "status": "未处理",
     "status_label": "未处理",
     "requirement_summary": "需求描述摘要",
-    "file_count": 0
+    "file_count": 0,
+    "deliveries": [
+      {
+        "delivery_note": "交付说明",
+        "created_at": "2026-07-09T09:00:00.000Z",
+        "files": [
+          {
+            "original_name": "最终成品.pdf",
+            "size": 102400,
+            "download_token": "不可枚举下载令牌"
+          }
+        ]
+      }
+    ]
   }
 }
 ```
@@ -223,6 +236,13 @@
 3. 管理员信息。
 4. 服务端文件真实路径、存储文件名或文件下载地址。
 5. 其他客户信息。
+6. 交付批次内部 id、文件内部 id 或后台下载地址。
+
+兼容说明：
+
+1. `deliveries` 为 V1.3 新增字段，没有成品交付时返回空数组。
+2. 客户可见的成品文件只包含原始文件名、文件大小和 `download_token`。
+3. `download_token` 只能配合订单号和联系方式调用客户成品下载接口，不能作为单独下载地址使用。
 
 ### 5.4 查询失败返回
 
@@ -321,6 +341,56 @@
   "message": "请填写补充说明或上传补充资料。"
 }
 ```
+
+### 5.6 客户成品文件下载
+
+| 项目 | 当前实现 |
+| --- | --- |
+| 方法 | POST |
+| 路径 | `/api/customer/orders/deliveries/download` |
+| 登录要求 | 否 |
+| 请求类型 | `application/json` |
+| 前端调用位置 | `public/js/main.js` 的客户查询页成品下载逻辑 |
+
+请求体：
+
+```json
+{
+  "order_no": "DD20260709001",
+  "contact": "客户提交时填写的联系方式",
+  "download_token": "不可枚举下载令牌"
+}
+```
+
+下载规则：
+
+1. `order_no`、`contact`、`download_token` 都必须存在。
+2. `order_no` 和 `contact` 会先进行前后空格裁剪。
+3. 必须同时匹配订单号和联系方式。
+4. `download_token` 必须属于该订单的成品交付文件。
+5. 该接口不能下载原始上传文件或客户补充资料文件。
+6. 磁盘文件必须存在。
+7. 成功时返回文件下载响应，下载文件名使用 `files.original_name`，不返回 JSON。
+
+参数缺失时返回 400：
+
+```json
+{
+  "success": false,
+  "message": "请填写订单号、联系方式和下载凭证。"
+}
+```
+
+下载校验失败时统一返回：
+
+```json
+{
+  "success": false,
+  "message": "未找到可下载的成品文件，请确认订单号和联系方式是否正确。"
+}
+```
+
+该失败提示不区分订单不存在、联系方式不匹配、token 错误、文件不属于该订单或磁盘文件不存在。
 
 ## 6. 后台登录相关接口
 
@@ -517,6 +587,24 @@
         }
       ]
     }
+  ],
+  "deliveries": [
+    {
+      "id": 1,
+      "delivery_note": "交付说明",
+      "created_at": "2026-07-09T09:00:00.000Z",
+      "updated_at": "2026-07-09T09:00:00.000Z",
+      "files": [
+        {
+          "id": 20,
+          "original_name": "最终成品.pdf",
+          "mime_type": "application/pdf",
+          "size": 102400,
+          "created_at": "2026-07-09T09:00:00.000Z",
+          "download_url": "/admin/files/20/download"
+        }
+      ]
+    }
   ]
 }
 ```
@@ -527,6 +615,9 @@
 2. 客户补充资料按批次放入 `supplements` 字段。
 3. `supplements[].files[].id` 仅供后台下载接口 `/admin/files/:id/download` 使用。
 4. 补充文件仍要求管理员登录后才能下载。
+5. 成品交付按批次放入 `deliveries` 字段。
+6. `deliveries[].files[].id` 仅供后台下载接口 `/admin/files/:id/download` 使用。
+7. 原始上传文件、客户补充资料和成品交付文件分区返回，互不混入。
 
 订单不存在时返回 404：
 
@@ -588,6 +679,66 @@
 1. 状态不在枚举内时，返回 400 和 `订单状态不正确。`
 2. 订单不存在时，返回 404 和 `订单不存在。`
 3. 未登录时，返回 401 和 `请先登录后台。`
+
+### 7.6 后台成品交付上传
+
+| 项目 | 当前实现 |
+| --- | --- |
+| 方法 | POST |
+| 路径 | `/api/admin/orders/:id/deliveries` |
+| 登录要求 | 是 |
+| 请求类型 | `multipart/form-data` |
+| 前端调用位置 | `public/js/main.js` 的后台订单详情页逻辑 |
+
+请求字段：
+
+| 字段名 | 类型 | 是否必填 | 说明 |
+| --- | --- | --- | --- |
+| `delivery_note` | string | 否 | 交付说明，后端会 trim |
+| `materials` | file[] | 否 | 成品文件，支持多文件 |
+
+上传规则：
+
+1. `delivery_note` 和 `materials` 至少提供一个。
+2. 成品文件沿用当前上传格式和单文件 100MB 限制。
+3. 上传成功会创建一条 `order_deliveries` 记录。
+4. 每个成品文件仍写入 `files` 表。
+5. 每个成品文件通过 `order_delivery_files` 关联到交付批次，并生成唯一 `download_token`。
+6. 上传成品不会自动修改订单状态。
+7. 校验失败、订单不存在、数据库失败或异常时，后端会清理本次请求已经保存到磁盘的上传文件。
+
+成功返回：
+
+```json
+{
+  "success": true,
+  "message": "成品上传成功",
+  "data": {
+    "order_no": "DD20260709001",
+    "file_count": 2,
+    "has_note": true,
+    "created_at": "2026-07-09T08:30:00.000Z"
+  }
+}
+```
+
+交付说明和文件都为空时返回 400：
+
+```json
+{
+  "success": false,
+  "message": "请填写交付说明或上传成品文件。"
+}
+```
+
+其他失败返回：
+
+```json
+{
+  "success": false,
+  "message": "成品上传失败，请稍后重试。"
+}
+```
 
 ## 8. 文件下载相关接口
 

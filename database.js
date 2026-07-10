@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
@@ -55,12 +56,37 @@ db.exec(`
     FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS order_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    delivery_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS order_delivery_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    delivery_id INTEGER NOT NULL,
+    file_id INTEGER NOT NULL UNIQUE,
+    download_token TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (delivery_id) REFERENCES order_deliveries(id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
   CREATE INDEX IF NOT EXISTS idx_files_order_id ON files(order_id);
   CREATE INDEX IF NOT EXISTS idx_order_supplements_order_id
     ON order_supplements(order_id);
   CREATE INDEX IF NOT EXISTS idx_order_supplement_files_supplement_id
     ON order_supplement_files(supplement_id);
+  CREATE INDEX IF NOT EXISTS idx_order_deliveries_order_id
+    ON order_deliveries(order_id);
+  CREATE INDEX IF NOT EXISTS idx_order_delivery_files_delivery_id
+    ON order_delivery_files(delivery_id);
+  CREATE INDEX IF NOT EXISTS idx_order_delivery_files_download_token
+    ON order_delivery_files(download_token);
 `);
 
 const insertOrder = db.prepare(`
@@ -135,6 +161,34 @@ const insertSupplementFile = db.prepare(`
   )
 `);
 
+const insertDelivery = db.prepare(`
+  INSERT INTO order_deliveries (
+    order_id,
+    delivery_note,
+    created_at,
+    updated_at
+  ) VALUES (
+    @order_id,
+    @delivery_note,
+    @created_at,
+    @updated_at
+  )
+`);
+
+const insertDeliveryFile = db.prepare(`
+  INSERT INTO order_delivery_files (
+    delivery_id,
+    file_id,
+    download_token,
+    created_at
+  ) VALUES (
+    @delivery_id,
+    @file_id,
+    @download_token,
+    @created_at
+  )
+`);
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -183,6 +237,10 @@ function insertUploadedFile(orderId, file, timestamp) {
   });
 
   return Number(fileInfo.lastInsertRowid);
+}
+
+function createDownloadToken() {
+  return crypto.randomBytes(32).toString('hex');
 }
 
 const createOrderTransaction = db.transaction((orderData, uploadedFiles) => {
@@ -270,6 +328,56 @@ function createOrderSupplement(orderNo, contact, supplementNote, uploadedFiles) 
     supplementNote,
     uploadedFiles
   );
+}
+
+const createOrderDeliveryTransaction = db.transaction(
+  (orderId, deliveryNote, uploadedFiles) => {
+    const order = db
+      .prepare(
+        `
+          SELECT id, order_no
+          FROM orders
+          WHERE id = ?
+          LIMIT 1
+        `
+      )
+      .get(orderId);
+
+    if (!order) {
+      return null;
+    }
+
+    const timestamp = nowIso();
+    const files = uploadedFiles || [];
+    const deliveryInfo = insertDelivery.run({
+      order_id: order.id,
+      delivery_note: deliveryNote || '',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    const deliveryId = Number(deliveryInfo.lastInsertRowid);
+
+    for (const file of files) {
+      const fileId = insertUploadedFile(order.id, file, timestamp);
+      insertDeliveryFile.run({
+        delivery_id: deliveryId,
+        file_id: fileId,
+        download_token: createDownloadToken(),
+        created_at: timestamp,
+      });
+    }
+
+    return {
+      orderNo: order.order_no,
+      fileCount: files.length,
+      hasNote: Boolean((deliveryNote || '').trim()),
+      createdAt: timestamp,
+    };
+  }
+);
+
+function createOrderDelivery(orderId, deliveryNote, uploadedFiles) {
+  return createOrderDeliveryTransaction(orderId, deliveryNote, uploadedFiles);
 }
 
 function escapeLike(value) {
@@ -403,8 +511,11 @@ function getFilesByOrderId(orderId) {
         FROM files
         LEFT JOIN order_supplement_files
           ON order_supplement_files.file_id = files.id
+        LEFT JOIN order_delivery_files
+          ON order_delivery_files.file_id = files.id
         WHERE files.order_id = ?
           AND order_supplement_files.file_id IS NULL
+          AND order_delivery_files.file_id IS NULL
         ORDER BY files.id ASC
       `
     )
@@ -470,6 +581,67 @@ function getSupplementsByOrderId(orderId) {
   }));
 }
 
+function getDeliveriesByOrderId(orderId) {
+  const deliveries = db
+    .prepare(
+      `
+        SELECT id, delivery_note, created_at, updated_at
+        FROM order_deliveries
+        WHERE order_id = ?
+        ORDER BY datetime(created_at) ASC, id ASC
+      `
+    )
+    .all(orderId);
+
+  if (!deliveries.length) {
+    return [];
+  }
+
+  const ids = deliveries.map((delivery) => delivery.id);
+  const placeholders = ids.map(() => '?').join(', ');
+  const files = db
+    .prepare(
+      `
+        SELECT
+          order_delivery_files.delivery_id,
+          files.id,
+          files.original_name,
+          files.mime_type,
+          files.size,
+          files.created_at
+        FROM order_delivery_files
+        JOIN files ON files.id = order_delivery_files.file_id
+        WHERE order_delivery_files.delivery_id IN (${placeholders})
+        ORDER BY order_delivery_files.id ASC
+      `
+    )
+    .all(...ids);
+
+  const filesByDelivery = new Map();
+  for (const file of files) {
+    const deliveryId = file.delivery_id;
+    if (!filesByDelivery.has(deliveryId)) {
+      filesByDelivery.set(deliveryId, []);
+    }
+    filesByDelivery.get(deliveryId).push({
+      id: file.id,
+      original_name: file.original_name,
+      mime_type: file.mime_type,
+      size: file.size,
+      created_at: file.created_at,
+      download_url: `/admin/files/${file.id}/download`,
+    });
+  }
+
+  return deliveries.map((delivery) => ({
+    id: delivery.id,
+    delivery_note: delivery.delivery_note,
+    created_at: delivery.created_at,
+    updated_at: delivery.updated_at,
+    files: filesByDelivery.get(delivery.id) || [],
+  }));
+}
+
 function getOrderWithFiles(orderId) {
   const order = getOrderById(orderId);
   if (!order) {
@@ -480,7 +652,62 @@ function getOrderWithFiles(orderId) {
     order,
     files: getFilesByOrderId(orderId),
     supplements: getSupplementsByOrderId(orderId),
+    deliveries: getDeliveriesByOrderId(orderId),
   };
+}
+
+function getCustomerVisibleDeliveries(orderId) {
+  const deliveries = db
+    .prepare(
+      `
+        SELECT id, delivery_note, created_at
+        FROM order_deliveries
+        WHERE order_id = ?
+        ORDER BY datetime(created_at) ASC, id ASC
+      `
+    )
+    .all(orderId);
+
+  if (!deliveries.length) {
+    return [];
+  }
+
+  const ids = deliveries.map((delivery) => delivery.id);
+  const placeholders = ids.map(() => '?').join(', ');
+  const files = db
+    .prepare(
+      `
+        SELECT
+          order_delivery_files.delivery_id,
+          order_delivery_files.download_token,
+          files.original_name,
+          files.size
+        FROM order_delivery_files
+        JOIN files ON files.id = order_delivery_files.file_id
+        WHERE order_delivery_files.delivery_id IN (${placeholders})
+        ORDER BY order_delivery_files.id ASC
+      `
+    )
+    .all(...ids);
+
+  const filesByDelivery = new Map();
+  for (const file of files) {
+    const deliveryId = file.delivery_id;
+    if (!filesByDelivery.has(deliveryId)) {
+      filesByDelivery.set(deliveryId, []);
+    }
+    filesByDelivery.get(deliveryId).push({
+      original_name: file.original_name,
+      size: file.size,
+      download_token: file.download_token,
+    });
+  }
+
+  return deliveries.map((delivery) => ({
+    delivery_note: delivery.delivery_note,
+    created_at: delivery.created_at,
+    files: filesByDelivery.get(delivery.id) || [],
+  }));
 }
 
 function getCustomerVisibleOrder(orderNo, contact) {
@@ -488,6 +715,7 @@ function getCustomerVisibleOrder(orderNo, contact) {
     .prepare(
       `
         SELECT
+          id,
           order_no,
           task_type,
           contact,
@@ -500,8 +728,11 @@ function getCustomerVisibleOrder(orderNo, contact) {
             FROM files
             LEFT JOIN order_supplement_files
               ON order_supplement_files.file_id = files.id
+            LEFT JOIN order_delivery_files
+              ON order_delivery_files.file_id = files.id
             WHERE files.order_id = orders.id
               AND order_supplement_files.file_id IS NULL
+              AND order_delivery_files.file_id IS NULL
           ) AS file_count
         FROM orders
         WHERE order_no = @order_no
@@ -533,6 +764,7 @@ function getCustomerVisibleOrder(orderNo, contact) {
     status_label: order.status,
     requirement_summary: requirementSummary,
     file_count: Number(order.file_count || 0),
+    deliveries: getCustomerVisibleDeliveries(order.id),
   };
 }
 
@@ -577,12 +809,47 @@ function getFileById(fileId) {
     .get(fileId);
 }
 
+function getCustomerDeliveryDownloadFile(orderNo, contact, downloadToken) {
+  return db
+    .prepare(
+      `
+        SELECT
+          files.original_name,
+          files.stored_name,
+          files.size,
+          files.mime_type
+        FROM order_delivery_files
+        JOIN order_deliveries
+          ON order_deliveries.id = order_delivery_files.delivery_id
+        JOIN orders
+          ON orders.id = order_deliveries.order_id
+        JOIN files
+          ON files.id = order_delivery_files.file_id
+        LEFT JOIN order_supplement_files
+          ON order_supplement_files.file_id = files.id
+        WHERE orders.order_no = @order_no
+          AND orders.contact = @contact
+          AND order_delivery_files.download_token = @download_token
+          AND files.order_id = orders.id
+          AND order_supplement_files.file_id IS NULL
+        LIMIT 1
+      `
+    )
+    .get({
+      order_no: orderNo,
+      contact,
+      download_token: downloadToken,
+    });
+}
+
 module.exports = {
   createOrder,
   createOrderSupplement,
+  createOrderDelivery,
   getOrders,
   getOrderWithFiles,
   getCustomerVisibleOrder,
+  getCustomerDeliveryDownloadFile,
   updateOrder,
   getFileById,
 };

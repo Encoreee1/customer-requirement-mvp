@@ -617,7 +617,21 @@ textarea:focus {
   gap: 14px;
 }
 
+.delivery-list {
+  display: grid;
+  gap: 14px;
+}
+
 .supplement-item {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  background: #f9fafb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.delivery-item {
   display: grid;
   gap: 14px;
   padding: 16px;
@@ -633,38 +647,76 @@ textarea:focus {
   gap: 12px;
 }
 
+.delivery-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .supplement-heading strong {
+  font-size: 17px;
+}
+
+.delivery-heading strong {
   font-size: 17px;
 }
 
 .supplement-heading span,
 .supplement-note-block > span,
-.supplement-files-block > span {
+.supplement-files-block > span,
+.delivery-heading span,
+.delivery-note-block > span,
+.delivery-files-block > span {
   color: var(--muted);
   font-size: 14px;
   font-weight: 700;
 }
 
 .supplement-note-block,
-.supplement-files-block {
+.supplement-files-block,
+.delivery-note-block,
+.delivery-files-block {
   display: grid;
   gap: 8px;
 }
 
 .supplement-note-block p,
-.supplement-empty {
+.supplement-empty,
+.delivery-note-block p,
+.delivery-empty {
   margin: 0;
 }
 
-.supplement-note-block p {
+.supplement-note-block p,
+.delivery-note-block p {
   padding: 12px 14px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 8px;
 }
 
-.supplement-file-list li {
+.supplement-file-list li,
+.delivery-file-list li {
   background: #fff;
+}
+
+.delivery-file-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.delivery-file-meta strong {
+  overflow-wrap: anywhere;
+}
+
+.delivery-upload-form {
+  margin-top: 18px;
+  padding: 18px;
+  background: #f9fafb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .admin-edit-form {
@@ -767,7 +819,8 @@ textarea:focus {
     flex-direction: column;
   }
 
-  .supplement-heading {
+  .supplement-heading,
+  .delivery-heading {
     align-items: flex-start;
     flex-direction: column;
   }
