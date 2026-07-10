@@ -92,6 +92,8 @@ function trimText(value) {
 }
 
 const customerOrderNotFoundMessage = '未查询到订单，请确认订单号和联系方式是否正确。';
+const customerDeliveryDownloadNotFoundMessage =
+  '未找到可下载的成品文件，请确认订单号和联系方式是否正确。';
 
 function requireAdmin(req, res, next) {
   if (req.session && req.session.isAdmin) {
@@ -310,6 +312,53 @@ app.post('/api/customer/orders/supplements', uploadMiddleware, (req, res) => {
   }
 });
 
+app.post('/api/customer/orders/deliveries/download', (req, res) => {
+  const orderNo = trimText(req.body.order_no || req.body.orderNo);
+  const contact = trimText(req.body.contact);
+  const downloadToken = trimText(req.body.download_token);
+
+  if (!orderNo || !contact || !downloadToken) {
+    res.status(400).json({
+      success: false,
+      message: '请填写订单号、联系方式和下载凭证。',
+    });
+    return;
+  }
+
+  try {
+    const file = database.getCustomerDeliveryDownloadFile(
+      orderNo,
+      contact,
+      downloadToken
+    );
+
+    if (!file) {
+      res.status(404).json({
+        success: false,
+        message: customerDeliveryDownloadNotFoundMessage,
+      });
+      return;
+    }
+
+    const absolutePath = path.join(config.uploadsDir, file.stored_name);
+    if (!fs.existsSync(absolutePath)) {
+      res.status(404).json({
+        success: false,
+        message: customerDeliveryDownloadNotFoundMessage,
+      });
+      return;
+    }
+
+    res.download(absolutePath, file.original_name);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: customerDeliveryDownloadNotFoundMessage,
+    });
+  }
+});
+
 app.get('/admin/login', (req, res) => {
   if (req.session && req.session.isAdmin) {
     res.redirect('/admin');
@@ -371,6 +420,58 @@ app.get('/api/admin/orders/:id', requireAdmin, (req, res) => {
   }
 
   res.json({ success: true, ...data });
+});
+
+app.post('/api/admin/orders/:id/deliveries', requireAdmin, uploadMiddleware, (req, res) => {
+  const orderId = Number(req.params.id);
+  const deliveryNote = trimText(req.body.delivery_note);
+  const uploadedFiles = (req.files || []).map((file) => ({
+    ...file,
+    originalname: normalizeOriginalName(file.originalname),
+  }));
+
+  if (!Number.isInteger(orderId) || orderId < 1) {
+    cleanupUploadedFiles(uploadedFiles);
+    res.status(404).json({ success: false, message: '订单不存在。' });
+    return;
+  }
+
+  if (!deliveryNote && uploadedFiles.length === 0) {
+    cleanupUploadedFiles(uploadedFiles);
+    res.status(400).json({
+      success: false,
+      message: '请填写交付说明或上传成品文件。',
+    });
+    return;
+  }
+
+  try {
+    const result = database.createOrderDelivery(orderId, deliveryNote, uploadedFiles);
+
+    if (!result) {
+      cleanupUploadedFiles(uploadedFiles);
+      res.status(404).json({ success: false, message: '订单不存在。' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: '成品上传成功',
+      data: {
+        order_no: result.orderNo,
+        file_count: result.fileCount,
+        has_note: result.hasNote,
+        created_at: result.createdAt,
+      },
+    });
+  } catch (error) {
+    cleanupUploadedFiles(uploadedFiles);
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: '成品上传失败，请稍后重试。',
+    });
+  }
 });
 
 app.patch('/api/admin/orders/:id', requireAdmin, (req, res) => {

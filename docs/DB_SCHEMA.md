@@ -34,7 +34,9 @@
 7. 如果不存在则创建 `files` 表。
 8. 如果不存在则创建 `order_supplements` 表。
 9. 如果不存在则创建 `order_supplement_files` 表。
-10. 如果不存在则创建索引。
+10. 如果不存在则创建 `order_deliveries` 表。
+11. 如果不存在则创建 `order_delivery_files` 表。
+12. 如果不存在则创建索引。
 
 当前没有独立迁移脚本。
 
@@ -163,7 +165,78 @@ ON order_supplement_files(supplement_id);
 4. 补充上传文件通过 `order_supplement_files.file_id` 与补充批次关联。
 5. 只有说明、没有文件的补充记录允许存在；既没有说明也没有文件的提交会被后端拒绝。
 
-## 8. 订单状态枚举值
+## 8. order_deliveries 表结构
+
+`order_deliveries` 表用于保存管理员对已有订单发起的每一次成品交付批次。交付说明不直接写入 `files` 表。
+
+| 字段名 | 类型 | 是否必填 | 默认值 | 含义 |
+| --- | --- | --- | --- | --- |
+| `id` | INTEGER | 自动生成 | 自增 | 交付记录主键 |
+| `order_id` | INTEGER | 是 | 无 | 所属订单 id |
+| `delivery_note` | TEXT | 是 | 空字符串 | 管理员填写的交付说明 |
+| `created_at` | TEXT | 是 | 无 | 交付记录创建时间，当前为 JavaScript ISO 字符串 |
+| `updated_at` | TEXT | 是 | 无 | 交付记录更新时间，当前创建时与 `created_at` 一致 |
+
+建表语句中的关键约束：
+
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+order_id INTEGER NOT NULL,
+delivery_note TEXT NOT NULL DEFAULT '',
+FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+```
+
+当前索引：
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_order_deliveries_order_id
+ON order_deliveries(order_id);
+```
+
+## 9. order_delivery_files 表结构
+
+`order_delivery_files` 表用于把成品交付批次和 `files` 表中的文件记录关联起来，并保存客户侧下载所需的不可枚举 token。
+
+| 字段名 | 类型 | 是否必填 | 默认值 | 含义 |
+| --- | --- | --- | --- | --- |
+| `id` | INTEGER | 自动生成 | 自增 | 关联记录主键 |
+| `delivery_id` | INTEGER | 是 | 无 | 所属交付记录 id |
+| `file_id` | INTEGER | 是 | 无 | 关联的文件 id |
+| `download_token` | TEXT | 是 | 无 | 客户下载成品文件时使用的不可枚举令牌 |
+| `created_at` | TEXT | 是 | 无 | 关联记录创建时间，当前为 JavaScript ISO 字符串 |
+
+建表语句中的关键约束：
+
+```sql
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+delivery_id INTEGER NOT NULL,
+file_id INTEGER NOT NULL UNIQUE,
+download_token TEXT NOT NULL UNIQUE,
+FOREIGN KEY (delivery_id) REFERENCES order_deliveries(id) ON DELETE CASCADE,
+FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+```
+
+当前索引：
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_order_delivery_files_delivery_id
+ON order_delivery_files(delivery_id);
+
+CREATE INDEX IF NOT EXISTS idx_order_delivery_files_download_token
+ON order_delivery_files(download_token);
+```
+
+兼容策略：
+
+1. 不修改旧 `orders` 表结构，旧订单数据不受影响。
+2. 不修改旧 `files` 表结构，成品文件仍保存到 `files` 表。
+3. 原始上传文件是没有出现在 `order_supplement_files` 或 `order_delivery_files` 中的 `files` 记录。
+4. 补充上传文件只通过 `order_supplement_files.file_id` 与补充批次关联。
+5. 成品交付文件只通过 `order_delivery_files.file_id` 与交付批次关联。
+6. 每个成品文件必须有一个唯一 `download_token`。
+7. 只有说明、没有文件的交付记录允许存在；既没有说明也没有文件的提交会被后端拒绝。
+
+## 10. 订单状态枚举值
 
 当前订单状态枚举来自 `config.js`：
 
@@ -178,7 +251,7 @@ ON order_supplement_files(supplement_id);
 
 后台修改状态时，后端会校验状态必须属于上述枚举。
 
-## 9. 任务类型枚举值
+## 11. 任务类型枚举值
 
 当前任务类型枚举来自 `config.js`：
 
@@ -191,7 +264,7 @@ ON order_supplement_files(supplement_id);
 
 客户提交订单时，后端会校验 `task_type` 必须属于上述枚举。
 
-## 10. orders、files 和补充资料表的关系
+## 12. orders、files、补充资料表和成品交付表的关系
 
 当前关系为：
 
@@ -203,11 +276,24 @@ ON order_supplement_files(supplement_id);
 6. 一个补充记录可以关联 0 个、1 个或多个补充文件。
 7. 每个补充文件仍在 `files` 表中保存一条文件记录。
 8. `order_supplement_files` 通过 `supplement_id` 和 `file_id` 连接补充记录与文件记录。
-9. 外键设置为 `ON DELETE CASCADE`。
+9. 一个订单可以关联 0 个、1 个或多个成品交付记录。
+10. 每个成品交付记录必须关联一个订单。
+11. 一个成品交付记录可以关联 0 个、1 个或多个成品文件。
+12. 每个成品文件仍在 `files` 表中保存一条文件记录。
+13. `order_delivery_files` 通过 `delivery_id` 和 `file_id` 连接交付记录与文件记录，并保存 `download_token`。
+14. 外键设置为 `ON DELETE CASCADE`。
+
+文件分区策略：
+
+1. 原始上传文件：`files` 中不存在于 `order_supplement_files` 和 `order_delivery_files` 的记录。
+2. 客户补充资料文件：通过 `order_supplement_files` 关联到补充批次的记录。
+3. 管理员成品交付文件：通过 `order_delivery_files` 关联到交付批次的记录。
+4. 后台订单详情必须按“原始上传文件 / 客户补充资料 / 成品交付”分区展示。
+5. 客户查询接口只返回成品交付文件的客户可见字段和 `download_token`，不返回内部 id、存储文件名或服务器路径。
 
 当前系统没有实现订单删除功能，因此级联删除规则暂未在业务界面中触发。
 
-## 11. 订单编号生成规则
+## 13. 订单编号生成规则
 
 当前订单编号由 `database.js` 中的 `nextOrderNo()` 生成：
 
@@ -222,7 +308,7 @@ ON order_supplement_files(supplement_id);
 
 当前实现通过查询当天最大 `order_no` 来生成下一编号。
 
-## 12. 文件存储字段说明
+## 14. 文件存储字段说明
 
 上传文件在磁盘上不会使用原始文件名保存，而是使用：
 
@@ -236,7 +322,7 @@ ON order_supplement_files(supplement_id);
 2. `stored_name` 用于定位 uploads 目录中的真实文件。
 3. `file_path` 当前保存相对路径，但下载接口实际使用 `config.uploadsDir + stored_name` 定位文件。
 
-## 13. 数据库变更规范
+## 15. 数据库变更规范
 
 后续数据库变更必须遵守：
 

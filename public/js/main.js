@@ -293,7 +293,7 @@
         }
 
         saveSupplementContact(contact);
-        renderOrderQueryResult(data.data || {});
+        renderOrderQueryResult(data.data || {}, { orderNo, contact });
         setMessage(message, '查询成功。', 'success');
         result.classList.remove('is-hidden');
       } catch (error) {
@@ -303,11 +303,21 @@
         button.textContent = '查询订单';
       }
     });
+
+    const deliveryList = document.querySelector('#queryDeliveryList');
+    if (deliveryList) {
+      deliveryList.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-delivery-download]');
+        if (!button) return;
+        await downloadCustomerDeliveryFile(button, message);
+      });
+    }
   }
 
-  function renderOrderQueryResult(order) {
+  function renderOrderQueryResult(order, queryContext = {}) {
     const requirement = (order.requirement_summary || '').trim();
-    const orderNo = order.order_no || '';
+    const orderNo = order.order_no || queryContext.orderNo || '';
+    const contact = queryContext.contact || order.contact || '';
 
     setText('#queryOrderNo', orderNo || '-');
     setText('#queryTaskType', order.task_type || '-');
@@ -327,6 +337,12 @@
       supplementLink.href = `/supplement-upload?orderNo=${encodeURIComponent(orderNo)}`;
     }
 
+    renderCustomerDeliveryList(
+      document.querySelector('#queryDeliveryList'),
+      order.deliveries || [],
+      { orderNo, contact }
+    );
+
     const requirementBlock = document.querySelector('#queryRequirementBlock');
     if (requirement) {
       setText('#queryRequirement', requirement);
@@ -334,6 +350,137 @@
     } else {
       requirementBlock.classList.add('is-hidden');
     }
+  }
+
+  function getDownloadFileName(response, fallback) {
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (encodedMatch) {
+      try {
+        return decodeURIComponent(encodedMatch[1]);
+      } catch (error) {
+        return fallback || '成品文件';
+      }
+    }
+
+    const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+    return plainMatch ? plainMatch[1] : fallback || '成品文件';
+  }
+
+  async function downloadCustomerDeliveryFile(button, message) {
+    const payload = {
+      order_no: button.dataset.orderNo || '',
+      contact: button.dataset.contact || '',
+      download_token: button.dataset.downloadToken || '',
+    };
+
+    if (!payload.order_no || !payload.contact || !payload.download_token) {
+      setMessage(message, '请重新查询订单后再下载成品文件。', 'error');
+      return;
+    }
+
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = '下载中...';
+
+    try {
+      const response = await fetch('/api/customer/orders/deliveries/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setMessage(
+          message,
+          data.message || '未找到可下载的成品文件，请确认订单号和联系方式是否正确。',
+          'error'
+        );
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = getDownloadFileName(response, button.dataset.fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setMessage(message, '下载已开始。', 'success');
+    } catch (error) {
+      setMessage(message, '下载失败，请稍后重试。', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+
+  function renderCustomerDeliveryList(container, deliveries, context) {
+    if (!container) return;
+
+    if (!deliveries.length) {
+      container.innerHTML =
+        '<p class="muted delivery-empty">暂无成品交付，请等待管理员处理。</p>';
+      return;
+    }
+
+    container.innerHTML = deliveries
+      .map((delivery, index) => {
+        const note = (delivery.delivery_note || '').trim();
+        const files = Array.isArray(delivery.files) ? delivery.files : [];
+        const filesHtml = files.length
+          ? `
+            <ul class="file-list delivery-file-list">
+              ${files
+                .map(
+                  (file) => `
+                    <li>
+                      <div class="delivery-file-meta">
+                        <strong>${escapeHtml(file.original_name)}</strong>
+                        <span>${escapeHtml(formatFileSize(file.size))}</span>
+                      </div>
+                      <button
+                        type="button"
+                        class="small-button"
+                        data-delivery-download="true"
+                        data-order-no="${escapeHtml(context.orderNo)}"
+                        data-contact="${escapeHtml(context.contact)}"
+                        data-download-token="${escapeHtml(file.download_token)}"
+                        data-file-name="${escapeHtml(file.original_name)}"
+                      >
+                        下载
+                      </button>
+                    </li>
+                  `
+                )
+                .join('')}
+            </ul>
+          `
+          : '<p class="muted delivery-empty">本批次暂无可下载文件</p>';
+
+        return `
+          <article class="delivery-item">
+            <div class="delivery-heading">
+              <strong>交付批次 ${index + 1}</strong>
+              <span>${escapeHtml(formatDateTime(delivery.created_at))}</span>
+            </div>
+            <div class="delivery-note-block">
+              <span>交付说明</span>
+              <p class="preserve-lines">${
+                note ? escapeHtml(note) : '<span class="muted">无交付说明</span>'
+              }</p>
+            </div>
+            <div class="delivery-files-block">
+              <span>成品文件</span>
+              ${filesHtml}
+            </div>
+          </article>
+        `;
+      })
+      .join('');
   }
 
   function initSupplementUploadPage() {
@@ -734,6 +881,64 @@
       .join('');
   }
 
+  function renderDeliveryList(container, deliveries) {
+    if (!container) return;
+
+    if (!deliveries.length) {
+      container.innerHTML = '<p class="muted delivery-empty">暂无成品交付</p>';
+      return;
+    }
+
+    container.innerHTML = deliveries
+      .map((delivery, index) => {
+        const note = (delivery.delivery_note || '').trim();
+        const files = Array.isArray(delivery.files) ? delivery.files : [];
+        const filesHtml = files.length
+          ? `
+            <ul class="file-list delivery-file-list">
+              ${files
+                .map(
+                  (file) => `
+                    <li>
+                      <a href="${escapeHtml(
+                        file.download_url || `/admin/files/${file.id}/download`
+                      )}">
+                        ${escapeHtml(file.original_name)}
+                      </a>
+                      <span>
+                        ${escapeHtml(formatFileSize(file.size))}
+                        · ${escapeHtml(formatDateTime(file.created_at))}
+                      </span>
+                    </li>
+                  `
+                )
+                .join('')}
+            </ul>
+          `
+          : '<p class="muted delivery-empty">本批次未上传文件</p>';
+
+        return `
+          <article class="delivery-item">
+            <div class="delivery-heading">
+              <strong>交付批次 ${index + 1}</strong>
+              <span>${escapeHtml(formatDateTime(delivery.created_at))}</span>
+            </div>
+            <div class="delivery-note-block">
+              <span>交付说明</span>
+              <p class="preserve-lines">${
+                note ? escapeHtml(note) : '<span class="muted">无交付说明</span>'
+              }</p>
+            </div>
+            <div class="delivery-files-block">
+              <span>成品文件</span>
+              ${filesHtml}
+            </div>
+          </article>
+        `;
+      })
+      .join('');
+  }
+
   function initAdminDetailPage() {
     const orderId = getOrderIdFromPath();
     const form = document.querySelector('#detailForm');
@@ -742,7 +947,13 @@
     const internalNote = document.querySelector('#internalNote');
     const fileList = document.querySelector('#fileList');
     const supplementList = document.querySelector('#supplementList');
+    const deliveryList = document.querySelector('#deliveryList');
+    const deliveryForm = document.querySelector('#deliveryForm');
+    const deliveryMessage = document.querySelector('#deliveryMessage');
+    const deliveryNote = document.querySelector('#deliveryNote');
+    const deliveryFiles = document.querySelector('#deliveryFiles');
     const button = form.querySelector('button[type="submit"]');
+    const deliveryButton = deliveryForm.querySelector('button[type="submit"]');
 
     async function loadDetail() {
       setMessage(message, '正在加载...', '');
@@ -788,11 +999,61 @@
         }
 
         renderSupplementList(supplementList, data.supplements || []);
+        renderDeliveryList(deliveryList, data.deliveries || []);
         setMessage(message, '', '');
       } catch (error) {
         setMessage(message, '网络异常，请稍后重试。', 'error');
       }
     }
+
+    deliveryForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      setMessage(deliveryMessage, '', '');
+
+      const deliveryNoteText = deliveryNote.value.trim();
+      const files = Array.from(deliveryFiles.files || []);
+
+      if (!deliveryNoteText && files.length === 0) {
+        setMessage(deliveryMessage, '请填写交付说明或上传成品文件。', 'error');
+        return;
+      }
+
+      const fileError = validateFiles(deliveryFiles);
+      if (fileError) {
+        setMessage(deliveryMessage, fileError, 'error');
+        return;
+      }
+
+      deliveryButton.disabled = true;
+      deliveryButton.textContent = '上传中...';
+
+      try {
+        const response = await fetch(`/api/admin/orders/${orderId}/deliveries`, {
+          method: 'POST',
+          body: new FormData(deliveryForm),
+        });
+        const data = await readJson(response);
+        if (!data) return;
+
+        if (!response.ok || !data.success) {
+          setMessage(
+            deliveryMessage,
+            data.message || '成品上传失败，请稍后重试。',
+            'error'
+          );
+          return;
+        }
+
+        deliveryForm.reset();
+        setMessage(deliveryMessage, data.message || '成品上传成功。', 'success');
+        await loadDetail();
+      } catch (error) {
+        setMessage(deliveryMessage, '网络异常，请稍后重试。', 'error');
+      } finally {
+        deliveryButton.disabled = false;
+        deliveryButton.textContent = '上传成品';
+      }
+    });
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();

@@ -65,7 +65,7 @@
         </div>
 
         <div class="content-block">
-          <h2>上传文件</h2>
+          <h2>原始上传文件</h2>
           <ul id="fileList" class="file-list"></ul>
         </div>
 
@@ -73,6 +73,34 @@
           <h2>客户补充资料</h2>
           <div id="supplementList" class="supplement-list"></div>
         </div>
+
+        <div class="content-block">
+          <h2>成品交付</h2>
+          <div id="deliveryList" class="delivery-list"></div>
+        </div>
+
+        <form id="deliveryForm" class="stack-form delivery-upload-form">
+          <label>
+            <span>交付说明</span>
+            <textarea
+              name="delivery_note"
+              id="deliveryNote"
+              rows="4"
+              placeholder="填写本次交付说明，可留空"
+            ></textarea>
+          </label>
+
+          <label>
+            <span>成品文件</span>
+            <input type="file" name="materials" id="deliveryFiles" multiple />
+          </label>
+
+          <div id="deliveryMessage" class="message" role="status"></div>
+
+          <div class="actions">
+            <button type="submit" class="primary-button">上传成品</button>
+          </div>
+        </form>
 
         <form id="detailForm" class="stack-form admin-edit-form">
           <div class="form-grid">
